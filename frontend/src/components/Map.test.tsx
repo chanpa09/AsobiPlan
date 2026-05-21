@@ -81,4 +81,148 @@ describe("Map", () => {
       expect(fetch).toHaveBeenCalledWith(expect.stringContaining("min_score=3&has_ramp=true"));
     });
   });
+
+  it("shows an OSRM route when route calculation succeeds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/baby-stations")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              {
+                id: 1,
+                name: "출발 수유소",
+                address: "출발 주소",
+                latitude: 35.6728,
+                longitude: 139.8174,
+                has_nursing_room: true,
+                has_diaper_table: true,
+                has_hot_water: false,
+                open_hours: "09:00-18:00",
+              },
+            ]),
+          });
+        }
+        if (url.includes("/api/places")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              {
+                id: 10,
+                name: "도착 카페",
+                category: "cafe",
+                address: "도착 주소",
+                latitude: 35.6701,
+                longitude: 139.8302,
+                google_rating: 4.2,
+                stroller_score: 4,
+                reasoning: "넓은 입구",
+                review_keywords: ["유모차"],
+                has_ramp: true,
+                doorway_width: "wide",
+                has_baby_chair: true,
+                has_stroller_parking: false,
+              },
+            ]),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            code: "Ok",
+            source: "osrm",
+            is_fallback: false,
+            routes: [
+              {
+                geometry: {
+                  coordinates: [
+                    [139.8174, 35.6728],
+                    [139.8302, 35.6701],
+                  ],
+                  type: "LineString",
+                },
+                duration: 500,
+                distance: 1000,
+              },
+            ],
+          }),
+        });
+      })
+    );
+
+    render(<Map />);
+
+    await screen.findByText("출발 수유소");
+    fireEvent.click(screen.getByRole("button", { name: "출발" }));
+    fireEvent.click(screen.getByRole("button", { name: "도착" }));
+
+    expect(await screen.findByText("실제 OSRM 도로망 기반")).toBeInTheDocument();
+    expect(screen.getByText("1.00 km")).toBeInTheDocument();
+    expect(screen.getByTestId("route-polyline")).toBeInTheDocument();
+  });
+
+  it("does not draw a fake route when OSRM is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/baby-stations")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              {
+                id: 1,
+                name: "출발 수유소",
+                address: "출발 주소",
+                latitude: 35.6728,
+                longitude: 139.8174,
+                has_nursing_room: true,
+                has_diaper_table: true,
+                has_hot_water: false,
+                open_hours: "09:00-18:00",
+              },
+            ]),
+          });
+        }
+        if (url.includes("/api/places")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              {
+                id: 10,
+                name: "도착 카페",
+                category: "cafe",
+                address: "도착 주소",
+                latitude: 35.6701,
+                longitude: 139.8302,
+                google_rating: 4.2,
+                stroller_score: 4,
+                reasoning: "넓은 입구",
+                review_keywords: ["유모차"],
+                has_ramp: true,
+                doorway_width: "wide",
+                has_baby_chair: true,
+                has_stroller_parking: false,
+              },
+            ]),
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          json: () => Promise.resolve({ detail: "Routing engine unavailable" }),
+        });
+      })
+    );
+
+    render(<Map />);
+
+    await screen.findByText("출발 수유소");
+    fireEvent.click(screen.getByRole("button", { name: "출발" }));
+    fireEvent.click(screen.getByRole("button", { name: "도착" }));
+
+    expect(await screen.findByText("OSRM 라우팅 엔진이 꺼져 있어 실제 동선을 계산할 수 없습니다.")).toBeInTheDocument();
+    expect(screen.queryByTestId("route-polyline")).not.toBeInTheDocument();
+  });
 });

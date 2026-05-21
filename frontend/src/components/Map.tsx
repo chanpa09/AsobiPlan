@@ -122,6 +122,8 @@ export default function Map() {
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Premium UI & Mode state
@@ -250,25 +252,41 @@ export default function Map() {
 
   // Request OSRM route from FastAPI backend
   const calculateRoute = useCallback(async (start: [number, number], end: [number, number]) => {
+    setIsCalculatingRoute(true);
+    setRouteError(null);
+    setRouteCoordinates([]);
+    setRouteInfo(null);
     try {
       const apiHost = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
       const res = await fetch(
         `${apiHost}/api/route?start_lat=${start[0]}&start_lon=${start[1]}&end_lat=${end[0]}&end_lon=${end[1]}`
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.routes && data.routes[0]) {
-          const route = data.routes[0];
-          const coords = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
-          setRouteCoordinates(coords);
-          setRouteInfo({
-            distance: route.distance, // meters
-            duration: route.duration, // seconds
-          });
-        }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || "Route calculation failed");
+      }
+
+      const data = await res.json();
+      if (data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const coords = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
+        setRouteCoordinates(coords);
+        setRouteInfo({
+          distance: route.distance, // meters
+          duration: route.duration, // seconds
+        });
       }
     } catch (err) {
       console.error("Failed to compute stroller routing:", err);
+      setRouteCoordinates([]);
+      setRouteInfo(null);
+      setRouteError(
+        err instanceof Error && err.message === "Routing engine unavailable"
+          ? "OSRM 라우팅 엔진이 꺼져 있어 실제 동선을 계산할 수 없습니다."
+          : "유모차 동선을 찾을 수 없습니다. 출발지와 도착지를 조금 조정해 주세요."
+      );
+    } finally {
+      setIsCalculatingRoute(false);
     }
   }, []);
 
@@ -279,6 +297,7 @@ export default function Map() {
     } else {
       setRouteCoordinates([]);
       setRouteInfo(null);
+      setRouteError(null);
     }
   }, [routeStart, routeEnd, calculateRoute]);
 
@@ -286,6 +305,9 @@ export default function Map() {
   const clearRoute = () => {
     setRouteStart(null);
     setRouteEnd(null);
+    setRouteCoordinates([]);
+    setRouteInfo(null);
+    setRouteError(null);
   };
 
   // Handle draggable marker drag events
@@ -467,8 +489,29 @@ export default function Map() {
             </div>
           )}
 
-          {routeInfo && (
+          {isCalculatingRoute && (
             <div className="route-info-box">
+              <p className="safety-note">
+                <RefreshCw size={14} className="inline mr-1 animate-spin" />
+                실제 OSRM 도로망으로 유모차 동선을 계산 중입니다.
+              </p>
+            </div>
+          )}
+
+          {routeError && (
+            <div className="route-info-box route-error-box">
+              <p className="safety-note route-error-text">
+                {routeError}
+              </p>
+              <button className="clear-btn" onClick={clearRoute}>
+                동선 해제
+              </button>
+            </div>
+          )}
+
+          {routeInfo && !routeError && (
+            <div className="route-info-box">
+              <div className="route-source-badge">실제 OSRM 도로망 기반</div>
               <div className="route-stats">
                 <div className="stat">
                   <span className="label">유모차 이동 거리</span>
@@ -481,7 +524,7 @@ export default function Map() {
               </div>
               <p className="safety-note">
                 <Footprints size={14} className="inline mr-1" />
-                계단 회피 및 엘리베이터 위주로 설계된 전용 안전 동선입니다.
+                계단 회피와 유모차 친화 경로 가중치를 적용한 동선입니다.
               </p>
               <button className="clear-btn" onClick={clearRoute}>
                 동선 해제

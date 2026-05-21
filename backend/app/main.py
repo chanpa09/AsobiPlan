@@ -190,48 +190,49 @@ def get_route(
     r_end_lon = round(end_lon, 4)
     
     try:
-        cached_route = db.query(RouteCache).filter(
+        cached_routes = db.query(RouteCache).filter(
             RouteCache.start_lat == r_start_lat,
             RouteCache.start_lon == r_start_lon,
             RouteCache.end_lat == r_end_lat,
             RouteCache.end_lon == r_end_lon
-        ).first()
-        if cached_route:
+        ).all()
+        valid_cached_route = None
+        for cached_route in cached_routes:
+            if cached_route.route_data.get("source") == "osrm" and cached_route.route_data.get("is_fallback") is False:
+                if valid_cached_route is None:
+                    valid_cached_route = cached_route
+            else:
+                db.delete(cached_route)
+        if cached_routes:
+            db.commit()
+        if valid_cached_route is not None:
             print("Route cache hit!")
-            return cached_route.route_data
+            return valid_cached_route.route_data
     except Exception as e:
+        db.rollback()
         print(f"Error checking route cache: {safe_str(e)}")
 
     coordinates = f"{start_lon},{start_lat};{end_lon},{end_lat}"
-    osrm_api_url = f"{OSRM_URL}/route/v1/foot/{coordinates}?steps=true&geometries=geojson&overview=full"
+    osrm_api_url = (
+        f"{OSRM_URL}/route/v1/foot/{coordinates}"
+        "?steps=true&geometries=geojson&overview=full&alternatives=true"
+    )
     
     route_data = None
     try:
         response = requests.get(osrm_api_url, timeout=5)
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="OSRM Engine error")
+            raise HTTPException(status_code=502, detail="OSRM engine returned an error")
         route_data = response.json()
+        if route_data.get("code") in {"NoRoute", "NoSegment"}:
+            raise HTTPException(status_code=422, detail="No stroller route found")
+        if route_data.get("code") != "Ok" or not route_data.get("routes"):
+            raise HTTPException(status_code=502, detail="Invalid OSRM route response")
+        route_data["source"] = "osrm"
+        route_data["is_fallback"] = False
     except requests.exceptions.RequestException as e:
-        print(f"OSRM container connection failed: {safe_str(e)}. Returning fallback mockup route.")
-        route_data = {
-            "routes": [
-                {
-                    "geometry": {
-                        "coordinates": [
-                            [start_lon, start_lat],
-                            [139.8210, 35.6715],
-                            [139.8235, 35.6708],
-                            [end_lon, end_lat]
-                        ],
-                        "type": "LineString"
-                    },
-                    "duration": 600,
-                    "distance": 1200
-                }
-            ],
-            "code": "Ok",
-            "message": "Fallback route returned (OSRM container offline)"
-        }
+        print(f"OSRM container connection failed: {safe_str(e)}.")
+        raise HTTPException(status_code=503, detail="Routing engine unavailable")
 
     if route_data:
         try:

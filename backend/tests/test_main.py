@@ -122,16 +122,21 @@ def test_get_places_rejects_invalid_min_score(client):
     response = client.get("/api/places?lat=35.6728&lon=139.8174&min_score=6")
     assert response.status_code == 422
 
-def test_get_route_fallback(client):
-    # When OSRM fails or offline, return fallback mock route
-    # We enforce a failed connection by mocking requests.get to throw an exception
+def test_get_route_returns_503_when_osrm_unavailable(db, client):
     with patch("requests.get", side_effect=requests.exceptions.RequestException("OSRM offline")):
         response = client.get("/api/route?start_lat=35.6728&start_lon=139.8174&end_lat=35.6701&end_lon=139.8302")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["code"] == "Ok"
-        assert "Fallback route" in data["message"]
-        assert len(data["routes"][0]["geometry"]["coordinates"]) > 0
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Routing engine unavailable"
+        assert db.query(RouteCache).first() is None
+
+def test_get_route_returns_422_when_osrm_has_no_route(client):
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"code": "NoRoute", "routes": []}
+
+        response = client.get("/api/route?start_lat=35.6728&start_lon=139.8174&end_lat=35.6701&end_lon=139.8302")
+        assert response.status_code == 422
+        assert response.json()["detail"] == "No stroller route found"
 
 def test_get_route_success(db, client):
     # Mock a successful OSRM response
@@ -161,12 +166,15 @@ def test_get_route_success(db, client):
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == "Ok"
+        assert data["source"] == "osrm"
+        assert data["is_fallback"] is False
         assert data["routes"][0]["duration"] == 500
         
         # Test if cache was populated
         cache = db.query(RouteCache).first()
         assert cache is not None
         assert cache.start_lat == 35.6728
+        assert cache.route_data["source"] == "osrm"
         assert cache.route_data["routes"][0]["duration"] == 500
         
         # Next query should hit cache (mock requests should NOT be called again)
@@ -174,3 +182,98 @@ def test_get_route_success(db, client):
         response2 = client.get("/api/route?start_lat=35.6728&start_lon=139.8174&end_lat=35.6701&end_lon=139.8302")
         assert response2.status_code == 200
         mock_get.assert_not_called()
+
+def test_get_route_deletes_stale_fallback_caches(db, client):
+    stale_route_data = {
+        "routes": [{"duration": 600, "distance": 1200}],
+        "code": "Ok",
+        "message": "Fallback route returned (OSRM container offline)"
+    }
+    db.add_all([
+        RouteCache(
+            start_lat=35.6728,
+            start_lon=139.8174,
+            end_lat=35.6701,
+            end_lon=139.8302,
+            route_data=stale_route_data,
+        ),
+        RouteCache(
+            start_lat=35.6728,
+            start_lon=139.8174,
+            end_lat=35.6701,
+            end_lon=139.8302,
+            route_data={**stale_route_data, "is_fallback": True},
+        ),
+    ])
+    db.commit()
+
+    mock_osrm_response = {
+        "routes": [
+            {
+                "geometry": {
+                    "coordinates": [
+                        [139.8174, 35.6728],
+                        [139.8302, 35.6701]
+                    ],
+                    "type": "LineString"
+                },
+                "duration": 500,
+                "distance": 1000
+            }
+        ],
+        "code": "Ok"
+    }
+
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = mock_osrm_response
+
+        response = client.get("/api/route?start_lat=35.6728&start_lon=139.8174&end_lat=35.6701&end_lon=139.8302")
+        assert response.status_code == 200
+        assert response.json()["source"] == "osrm"
+
+    caches = db.query(RouteCache).all()
+    assert len(caches) == 1
+    assert caches[0].route_data["source"] == "osrm"
+    assert caches[0].route_data["is_fallback"] is False
+
+def test_get_route_deletes_stale_caches_before_returning_valid_cache(db, client):
+    valid_route_data = {
+        "routes": [{"duration": 500, "distance": 1000}],
+        "code": "Ok",
+        "source": "osrm",
+        "is_fallback": False,
+    }
+    stale_route_data = {
+        "routes": [{"duration": 600, "distance": 1200}],
+        "code": "Ok",
+        "is_fallback": True,
+    }
+    db.add_all([
+        RouteCache(
+            start_lat=35.6728,
+            start_lon=139.8174,
+            end_lat=35.6701,
+            end_lon=139.8302,
+            route_data=stale_route_data,
+        ),
+        RouteCache(
+            start_lat=35.6728,
+            start_lon=139.8174,
+            end_lat=35.6701,
+            end_lon=139.8302,
+            route_data=valid_route_data,
+        ),
+    ])
+    db.commit()
+
+    with patch("requests.get") as mock_get:
+        response = client.get("/api/route?start_lat=35.6728&start_lon=139.8174&end_lat=35.6701&end_lon=139.8302")
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "osrm"
+    mock_get.assert_not_called()
+
+    caches = db.query(RouteCache).all()
+    assert len(caches) == 1
+    assert caches[0].route_data == valid_route_data

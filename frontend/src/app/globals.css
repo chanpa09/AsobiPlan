@@ -201,6 +201,29 @@ body, html {
   border: 1px solid rgba(79, 70, 229, 0.2);
 }
 
+.route-error-box {
+  background: var(--accent-red-light);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.route-error-text {
+  color: var(--accent-red);
+  margin-bottom: 12px;
+}
+
+.route-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(79, 70, 229, 0.25);
+}
+
 .route-stats {
   display: flex;
   justify-content: space-between;
@@ -701,4 +724,3 @@ body, html {
   accent-color: var(--primary);
   cursor: pointer;
 }
-
