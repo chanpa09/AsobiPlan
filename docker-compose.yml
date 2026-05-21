@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: asobi_db
+    environment:
+      POSTGRES_USER: asobi_user
+      POSTGRES_PASSWORD: asobi_password
+      POSTGRES_DB: asobi_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asobi_user -d asobi_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  osrm:
+    build:
+      context: ./osrm
+      dockerfile: Dockerfile
+    container_name: asobi_osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - osrm_data:/data
+    restart: always
+
+volumes:
+  postgres_data:
+  osrm_data:
