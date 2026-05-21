@@ -87,6 +87,44 @@ interface Place {
   has_stroller_parking: boolean;
 }
 
+type PointFeature<T> = {
+  type: "Feature";
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+  properties: Omit<T, "latitude" | "longitude">;
+};
+
+type FeatureCollection<T> = {
+  type: "FeatureCollection";
+  features: PointFeature<T>[];
+};
+
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+const toDataUrl = (path: string) => `${BASE_PATH}${path}`;
+const getRouteApiUrl = () => process.env.NEXT_PUBLIC_ROUTE_API_URL || "";
+
+const featureToRecord = <T extends { latitude: number; longitude: number }>(feature: PointFeature<T>): T => {
+  const [longitude, latitude] = feature.geometry.coordinates;
+  return {
+    ...feature.properties,
+    latitude,
+    longitude,
+  } as T;
+};
+
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const radius = 6371000;
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 interface MapControllerProps {
   center: [number, number];
 }
@@ -117,6 +155,8 @@ export default function Map() {
   const [center, setCenter] = useState<[number, number]>([35.6715, 139.8210]); // Toyocho/Minamisuna default
   const [babyStations, setBabyStations] = useState<BabyStation[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [allBabyStations, setAllBabyStations] = useState<BabyStation[]>([]);
+  const [allPlaces, setAllPlaces] = useState<Place[]>([]);
   
   const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
@@ -168,6 +208,10 @@ export default function Map() {
   // Register Service Worker for offline PWA capabilities
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      if (BASE_PATH) {
+        return;
+      }
+
       if (process.env.NODE_ENV !== "production") {
         if ("getRegistrations" in navigator.serviceWorker) {
           navigator.serviceWorker.getRegistrations()
@@ -200,32 +244,55 @@ export default function Map() {
     }
   }, []);
 
-  // Fetch data from FastAPI backend
-  const fetchData = useCallback(async (lat: number, lon: number) => {
-    setLoading(true);
-    try {
-      const apiHost = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      
-      const stationsRes = await fetch(`${apiHost}/api/baby-stations?lat=${lat}&lon=${lon}&radius=800`);
-      
-      // Dynamic query params matching database schema
-      let placesUrl = `${apiHost}/api/places?lat=${lat}&lon=${lon}&radius=1200&min_score=${filterMinScore}`;
-      if (filterCategory) placesUrl += `&category=${filterCategory}`;
-      if (filterRamp) placesUrl += `&has_ramp=true`;
-      if (filterDoorwayWidth && filterDoorwayWidth !== "all") placesUrl += `&doorway_width=${filterDoorwayWidth}`;
-      if (filterBabyChair) placesUrl += `&has_baby_chair=true`;
-      if (filterStrollerParking) placesUrl += `&has_stroller_parking=true`;
+  useEffect(() => {
+    const loadStaticData = async () => {
+      setLoading(true);
+      try {
+        const [stationsRes, placesRes] = await Promise.all([
+          fetch(toDataUrl("/data/baby-stations.json")),
+          fetch(toDataUrl("/data/places.json")),
+        ]);
+        if (!stationsRes.ok || !placesRes.ok) {
+          throw new Error("Static data unavailable");
+        }
 
-      const placesRes = await fetch(placesUrl);
-      
-      if (stationsRes.ok) setBabyStations(await stationsRes.json());
-      if (placesRes.ok) setPlaces(await placesRes.json());
-    } catch (error) {
-      console.error("Error fetching markers:", error);
-    } finally {
-      setLoading(false);
-    }
+        const stationsData = await stationsRes.json() as FeatureCollection<BabyStation>;
+        const placesData = await placesRes.json() as FeatureCollection<Place>;
+        setAllBabyStations(stationsData.features.map(featureToRecord));
+        setAllPlaces(placesData.features.map(featureToRecord));
+      } catch (error) {
+        console.error("Error loading static data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStaticData();
+  }, []);
+
+  // Filter bundled static data on the client for GitHub Pages deployment.
+  const fetchData = useCallback((lat: number, lon: number) => {
+    setLoading(true);
+    const nearbyStations = allBabyStations.filter((station) =>
+      haversineDistance(lat, lon, station.latitude, station.longitude) <= 800
+    );
+    const nearbyPlaces = allPlaces.filter((place) => {
+      if (haversineDistance(lat, lon, place.latitude, place.longitude) > 1200) return false;
+      if (place.stroller_score < filterMinScore) return false;
+      if (filterCategory && place.category !== filterCategory) return false;
+      if (filterRamp && !place.has_ramp) return false;
+      if (filterDoorwayWidth !== "all" && place.doorway_width !== filterDoorwayWidth) return false;
+      if (filterBabyChair && !place.has_baby_chair) return false;
+      if (filterStrollerParking && !place.has_stroller_parking) return false;
+      return true;
+    });
+
+    setBabyStations(nearbyStations);
+    setPlaces(nearbyPlaces);
+    setLoading(false);
   }, [
+    allBabyStations,
+    allPlaces,
     filterMinScore,
     filterCategory,
     filterRamp,
@@ -250,17 +317,26 @@ export default function Map() {
     });
   }, [babyStations, filterNursingRoom, filterDiaperTable, filterHotWater]);
 
-  // Request OSRM route from FastAPI backend
+  // Request route from the configured serverless proxy.
   const calculateRoute = useCallback(async (start: [number, number], end: [number, number]) => {
     setIsCalculatingRoute(true);
     setRouteError(null);
     setRouteCoordinates([]);
     setRouteInfo(null);
     try {
-      const apiHost = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      const res = await fetch(
-        `${apiHost}/api/route?start_lat=${start[0]}&start_lon=${start[1]}&end_lat=${end[0]}&end_lon=${end[1]}`
-      );
+      const routeApiUrl = getRouteApiUrl();
+      if (!routeApiUrl) {
+        throw new Error("Route proxy is not configured");
+      }
+
+      const res = await fetch(routeApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: { lat: start[0], lon: start[1] },
+          end: { lat: end[0], lon: end[1] },
+        }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || "Route calculation failed");
@@ -281,8 +357,8 @@ export default function Map() {
       setRouteCoordinates([]);
       setRouteInfo(null);
       setRouteError(
-        err instanceof Error && err.message === "Routing engine unavailable"
-          ? "OSRM 라우팅 엔진이 꺼져 있어 실제 동선을 계산할 수 없습니다."
+        err instanceof Error && err.message === "Route proxy is not configured"
+          ? "무료 라우팅 프록시가 아직 설정되지 않았습니다. GitHub Pages에서는 Cloudflare Worker URL을 연결해야 합니다."
           : "유모차 동선을 찾을 수 없습니다. 출발지와 도착지를 조금 조정해 주세요."
       );
     } finally {
@@ -493,7 +569,7 @@ export default function Map() {
             <div className="route-info-box">
               <p className="safety-note">
                 <RefreshCw size={14} className="inline mr-1 animate-spin" />
-                실제 OSRM 도로망으로 유모차 동선을 계산 중입니다.
+                무료 라우팅 API로 유모차 동선을 계산 중입니다.
               </p>
             </div>
           )}
@@ -511,7 +587,7 @@ export default function Map() {
 
           {routeInfo && !routeError && (
             <div className="route-info-box">
-              <div className="route-source-badge">실제 OSRM 도로망 기반</div>
+              <div className="route-source-badge">무료 라우팅 API 기반</div>
               <div className="route-stats">
                 <div className="stat">
                   <span className="label">유모차 이동 거리</span>
@@ -524,7 +600,7 @@ export default function Map() {
               </div>
               <p className="safety-note">
                 <Footprints size={14} className="inline mr-1" />
-                계단 회피와 유모차 친화 경로 가중치를 적용한 동선입니다.
+                회피 조건을 적용한 도보 기반 동선입니다.
               </p>
               <button className="clear-btn" onClick={clearRoute}>
                 동선 해제

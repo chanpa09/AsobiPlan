@@ -1,0 +1,77 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8160, 35.6725] },
+      "properties": {
+        "id": 1,
+        "name": "로얄 호스트 토요초점 (Royal Host)",
+        "category": "restaurant",
+        "address": "도쿄도 고토구 토요 4-1-1",
+        "google_rating": 4.1,
+        "stroller_score": 5,
+        "reasoning": "공간이 넓고 유모차 진입이 수월하다는 긍정적인 평이 많습니다.",
+        "review_keywords": ["유모차", "이유식", "넓은통로"],
+        "has_ramp": false,
+        "doorway_width": "wide",
+        "has_baby_chair": true,
+        "has_stroller_parking": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8250, 35.6705] },
+      "properties": {
+        "id": 2,
+        "name": "미나미스나 선스모크 공원 (Sunsun Park)",
+        "category": "park",
+        "address": "도쿄도 고토구 미나미스나 2-1",
+        "google_rating": 4.3,
+        "stroller_score": 5,
+        "reasoning": "공원 자체가 평탄하고 경사로가 정비되어 유모차 산책에 적합합니다.",
+        "review_keywords": ["유모차", "경사로"],
+        "has_ramp": true,
+        "doorway_width": "wide",
+        "has_baby_chair": false,
+        "has_stroller_parking": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8285, 35.6695] },
+      "properties": {
+        "id": 3,
+        "name": "스타벅스 커피 미나미스나점",
+        "category": "cafe",
+        "address": "도쿄도 고토구 미나미스나 3-12-1",
+        "google_rating": 3.9,
+        "stroller_score": 3,
+        "reasoning": "일부 통로가 좁지만 테라스석과 친절한 직원 응대가 장점입니다.",
+        "review_keywords": ["유모차", "좁음"],
+        "has_ramp": false,
+        "doorway_width": "narrow",
+        "has_baby_chair": false,
+        "has_stroller_parking": false
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8145, 35.6710] },
+      "properties": {
+        "id": 4,
+        "name": "토요초 라멘집 (Stairs Entrance)",
+        "category": "restaurant",
+        "address": "도쿄도 고토구 토요 3-15",
+        "google_rating": 3.8,
+        "stroller_score": 1,
+        "reasoning": "입구가 계단이고 좌석이 좁아 유모차 방문에는 적합하지 않습니다.",
+        "review_keywords": ["계단있음", "좁음"],
+        "has_ramp": false,
+        "doorway_width": "narrow",
+        "has_baby_chair": false,
+        "has_stroller_parking": false
+      }
+    }
+  ]
+}

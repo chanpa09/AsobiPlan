@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8174, 35.6728] },
+      "properties": {
+        "id": 1,
+        "name": "고토구청 본청사 아기 정거장",
+        "address": "도쿄도 고토구 토요 4-11-28",
+        "has_nursing_room": true,
+        "has_diaper_table": true,
+        "has_hot_water": true,
+        "open_hours": "08:30 - 17:15"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8302, 35.6701] },
+      "properties": {
+        "id": 2,
+        "name": "이온몰 미나미스나점 아기 정거장",
+        "address": "도쿄도 고토구 미나미스나 6-7-15",
+        "has_nursing_room": true,
+        "has_diaper_table": true,
+        "has_hot_water": true,
+        "open_hours": "10:00 - 22:00"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.8167, 35.6720] },
+      "properties": {
+        "id": 3,
+        "name": "토요초역 아기 정거장 (지하 1층)",
+        "address": "도쿄도 고토구 토요 4-1-2",
+        "has_nursing_room": false,
+        "has_diaper_table": true,
+        "has_hot_water": false,
+        "open_hours": "첫차 - 막차"
+      }
+    }
+  ]
+}

@@ -32,15 +32,89 @@ describe("Map", () => {
     })
   );
 
+  const stationCollection = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [139.8174, 35.6728] },
+        properties: {
+          id: 1,
+          name: "출발 수유소",
+          address: "출발 주소",
+          has_nursing_room: true,
+          has_diaper_table: true,
+          has_hot_water: false,
+          open_hours: "09:00-18:00",
+        },
+      },
+    ],
+  };
+
+  const placeCollection = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [139.8302, 35.6701] },
+        properties: {
+          id: 10,
+          name: "도착 카페",
+          category: "cafe",
+          address: "도착 주소",
+          google_rating: 4.2,
+          stroller_score: 4,
+          reasoning: "넓은 입구",
+          review_keywords: ["유모차"],
+          has_ramp: true,
+          doorway_width: "wide",
+          has_baby_chair: true,
+          has_stroller_parking: false,
+        },
+      },
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [139.8240, 35.6710] },
+        properties: {
+          id: 11,
+          name: "계단 카페",
+          category: "cafe",
+          address: "제외 주소",
+          google_rating: 4.0,
+          stroller_score: 4,
+          reasoning: "경사로 없음",
+          review_keywords: ["계단"],
+          has_ramp: false,
+          doorway_width: "wide",
+          has_baby_chair: true,
+          has_stroller_parking: false,
+        },
+      },
+    ],
+  };
+
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() =>
-        Promise.resolve({
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/data/baby-stations.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(stationCollection),
+          });
+        }
+        if (url.includes("/data/places.json")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(placeCollection),
+          });
+        }
+        return Promise.resolve({
           ok: true,
           json: () => Promise.resolve([]),
-        })
-      )
+        });
+      })
     );
 
     Object.defineProperty(navigator, "serviceWorker", {
@@ -54,85 +128,59 @@ describe("Map", () => {
   afterEach(() => {
     cleanup();
     registerServiceWorker.mockClear();
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
-  it("renders the core stroller route panel and requests nearby data", async () => {
+  it("renders the core stroller route panel and requests bundled data", async () => {
     render(<Map />);
 
     expect(screen.getByRole("heading", { name: "AsobiPlan" })).toBeInTheDocument();
     expect(screen.getByText("Koto-ku Stroller Route")).toBeInTheDocument();
     expect(screen.getByTestId("map-container")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/baby-stations?lat=35.6715&lon=139.821"));
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/places?lat=35.6715&lon=139.821"));
-    });
+    expect(await screen.findByText("출발 수유소")).toBeInTheDocument();
+    expect(screen.getByText("도착 카페")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/data/baby-stations.json"));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/data/places.json"));
   });
 
-  it("updates place query parameters when filters change", async () => {
+  it("filters bundled place data when filters change", async () => {
     render(<Map />);
 
+    expect(await screen.findByText("계단 카페")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /상세 필터 설정/ }));
     fireEvent.change(screen.getByRole("slider"), { target: { value: "3" } });
     fireEvent.click(screen.getByLabelText("경사로 보유"));
 
+    expect(await screen.findByText("도착 카페")).toBeInTheDocument();
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("min_score=3&has_ramp=true"));
+      expect(screen.queryByText("계단 카페")).not.toBeInTheDocument();
     });
   });
 
-  it("shows an OSRM route when route calculation succeeds", async () => {
+  it("shows a route when the free route proxy succeeds", async () => {
+    vi.stubEnv("NEXT_PUBLIC_ROUTE_API_URL", "https://route-proxy.test/route");
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes("/api/baby-stations")) {
+        if (url.includes("/data/baby-stations.json")) {
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve([
-              {
-                id: 1,
-                name: "출발 수유소",
-                address: "출발 주소",
-                latitude: 35.6728,
-                longitude: 139.8174,
-                has_nursing_room: true,
-                has_diaper_table: true,
-                has_hot_water: false,
-                open_hours: "09:00-18:00",
-              },
-            ]),
+            json: () => Promise.resolve(stationCollection),
           });
         }
-        if (url.includes("/api/places")) {
+        if (url.includes("/data/places.json")) {
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve([
-              {
-                id: 10,
-                name: "도착 카페",
-                category: "cafe",
-                address: "도착 주소",
-                latitude: 35.6701,
-                longitude: 139.8302,
-                google_rating: 4.2,
-                stroller_score: 4,
-                reasoning: "넓은 입구",
-                review_keywords: ["유모차"],
-                has_ramp: true,
-                doorway_width: "wide",
-                has_baby_chair: true,
-                has_stroller_parking: false,
-              },
-            ]),
+            json: () => Promise.resolve(placeCollection),
           });
         }
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
             code: "Ok",
-            source: "osrm",
+            source: "ors",
             is_fallback: false,
             routes: [
               {
@@ -156,73 +204,35 @@ describe("Map", () => {
 
     await screen.findByText("출발 수유소");
     fireEvent.click(screen.getByRole("button", { name: "출발" }));
-    fireEvent.click(screen.getByRole("button", { name: "도착" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "도착" })[0]);
 
-    expect(await screen.findByText("실제 OSRM 도로망 기반")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "https://route-proxy.test/route",
+        expect.objectContaining({
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        })
+      );
+    });
+    const routeCall = vi.mocked(fetch).mock.calls.find(([input]) => input === "https://route-proxy.test/route");
+    expect(JSON.parse(routeCall?.[1]?.body as string)).toEqual({
+      start: { lat: 35.6728, lon: 139.8174 },
+      end: { lat: 35.6701, lon: 139.8302 },
+    });
+    expect(await screen.findByText("무료 라우팅 API 기반")).toBeInTheDocument();
     expect(screen.getByText("1.00 km")).toBeInTheDocument();
     expect(screen.getByTestId("route-polyline")).toBeInTheDocument();
   });
 
-  it("does not draw a fake route when OSRM is unavailable", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/api/baby-stations")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve([
-              {
-                id: 1,
-                name: "출발 수유소",
-                address: "출발 주소",
-                latitude: 35.6728,
-                longitude: 139.8174,
-                has_nursing_room: true,
-                has_diaper_table: true,
-                has_hot_water: false,
-                open_hours: "09:00-18:00",
-              },
-            ]),
-          });
-        }
-        if (url.includes("/api/places")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve([
-              {
-                id: 10,
-                name: "도착 카페",
-                category: "cafe",
-                address: "도착 주소",
-                latitude: 35.6701,
-                longitude: 139.8302,
-                google_rating: 4.2,
-                stroller_score: 4,
-                reasoning: "넓은 입구",
-                review_keywords: ["유모차"],
-                has_ramp: true,
-                doorway_width: "wide",
-                has_baby_chair: true,
-                has_stroller_parking: false,
-              },
-            ]),
-          });
-        }
-        return Promise.resolve({
-          ok: false,
-          json: () => Promise.resolve({ detail: "Routing engine unavailable" }),
-        });
-      })
-    );
-
+  it("does not draw a fake route when the route proxy is not configured", async () => {
     render(<Map />);
 
     await screen.findByText("출발 수유소");
     fireEvent.click(screen.getByRole("button", { name: "출발" }));
-    fireEvent.click(screen.getByRole("button", { name: "도착" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "도착" })[0]);
 
-    expect(await screen.findByText("OSRM 라우팅 엔진이 꺼져 있어 실제 동선을 계산할 수 없습니다.")).toBeInTheDocument();
+    expect(await screen.findByText("무료 라우팅 프록시가 아직 설정되지 않았습니다. GitHub Pages에서는 Cloudflare Worker URL을 연결해야 합니다.")).toBeInTheDocument();
     expect(screen.queryByTestId("route-polyline")).not.toBeInTheDocument();
   });
 });

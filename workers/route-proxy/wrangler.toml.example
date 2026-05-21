@@ -1,0 +1,10 @@
+name = "asobiplan-route-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-05-22"
+
+# Set secrets after creating the worker:
+# wrangler secret put ORS_API_KEY
+
+# Required CORS origin. Requests from other origins are rejected.
+[vars]
+ALLOWED_ORIGIN = "https://chanpa09.github.io"
