@@ -1,6 +1,7 @@
 const CACHE_NAME = 'asobiplan-static-v1';
 const API_CACHE_NAME = 'asobiplan-api-v1';
 const TILE_CACHE_NAME = 'asobiplan-tiles-v1';
+const IS_LOCAL_DEV = ['localhost', '127.0.0.1', '::1'].includes(self.location.hostname);
 
 const STATIC_ASSETS = [
   '/',
@@ -9,6 +10,11 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  if (IS_LOCAL_DEV) {
+    self.skipWaiting();
+    return;
+  }
+
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
@@ -17,6 +23,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  if (IS_LOCAL_DEV) {
+    event.waitUntil(
+      caches.keys()
+        .then((cacheNames) => Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName))))
+        .then(() => self.registration.unregister())
+        .then(() => self.clients.claim())
+    );
+    return;
+  }
+
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -36,6 +52,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (IS_LOCAL_DEV) {
+    return;
+  }
+
   // Only handle GET requests
   if (event.request.method !== 'GET') {
     return;

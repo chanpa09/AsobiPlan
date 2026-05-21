@@ -166,6 +166,25 @@ export default function Map() {
   // Register Service Worker for offline PWA capabilities
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      if (process.env.NODE_ENV !== "production") {
+        if ("getRegistrations" in navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistrations()
+            .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+            .catch((err) => {
+              console.error("Service Worker cleanup failed:", err);
+            });
+        }
+
+        if ("caches" in window) {
+          caches.keys()
+            .then((cacheNames) => Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName))))
+            .catch((err) => {
+              console.error("Cache cleanup failed:", err);
+            });
+        }
+        return;
+      }
+
       navigator.serviceWorker
         .register("/sw.js")
         .then((reg) => {
