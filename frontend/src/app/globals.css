@@ -394,6 +394,50 @@ body, html {
   border: 1px dashed var(--border-color);
 }
 
+.location-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.location-btn {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.location-btn.primary {
+  background: var(--accent-green-light);
+  border-color: transparent;
+  color: var(--accent-green);
+}
+
+.location-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.location-status,
+.location-error {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.location-status {
+  color: var(--text-muted);
+}
+
+.location-error {
+  color: var(--accent-red);
+}
+
 /* Amenities Tags */
 .amenity-tags {
   display: flex;

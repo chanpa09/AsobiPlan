@@ -30,6 +30,7 @@ describe("Map", () => {
       update: vi.fn(() => Promise.resolve()),
     })
   );
+  const getCurrentPosition = vi.fn();
 
   const stationCollection = {
     type: "FeatureCollection",
@@ -129,11 +130,19 @@ describe("Map", () => {
         register: registerServiceWorker,
       },
     });
+
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition,
+      },
+    });
   });
 
   afterEach(() => {
     cleanup();
     registerServiceWorker.mockClear();
+    getCurrentPosition.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -143,6 +152,8 @@ describe("Map", () => {
     expect(screen.getByRole("heading", { name: "AsobiPlan" })).toBeInTheDocument();
     expect(screen.getByText("출발지와 도착지를 모두 선택한 뒤 Google Maps에서 도보 길찾기를 엽니다. 계단 회피는 보장되지 않습니다.")).toBeInTheDocument();
     expect(screen.getByText("출발지와 도착지를 선택하세요")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "현재 위치 찾기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "현재 위치를 출발지로" })).toBeInTheDocument();
     expect(screen.getByTestId("map-container")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText("고토구청 본청사").length).toBeGreaterThan(0);
@@ -209,5 +220,52 @@ describe("Map", () => {
     expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("travelmode=walking"));
     expect(googleMapsLink).toHaveAttribute("target", "_blank");
     expect(screen.getByText("선택한 좌표는 지도에서 드래그해 조정할 수 있습니다.")).toBeInTheDocument();
+  });
+
+  it("finds the current location and uses it as the route start", async () => {
+    getCurrentPosition.mockImplementationOnce((success: PositionCallback) => {
+      success({
+        coords: {
+          latitude: 35.6729,
+          longitude: 139.8175,
+        },
+      } as GeolocationPosition);
+    });
+    render(<Map />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("도착 카페").length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "현재 위치를 출발지로" }));
+
+    expect(await screen.findByText("현재 위치: 35.6729, 139.8175")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "도착" })[1]);
+
+    const googleMapsLink = await screen.findByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" });
+    expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("origin=35.6729%2C139.8175"));
+    expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("destination=35.6701%2C139.8302"));
+  });
+
+  it("shows a location permission error when geolocation is denied", async () => {
+    getCurrentPosition.mockImplementationOnce((_success: PositionCallback, error: PositionErrorCallback) => {
+      error({ code: 1 } as GeolocationPositionError);
+    });
+    render(<Map />);
+
+    fireEvent.click(screen.getByRole("button", { name: "현재 위치 찾기" }));
+
+    expect(await screen.findByText("브라우저 위치 권한을 허용해야 현재 위치를 사용할 수 있습니다.")).toBeInTheDocument();
+  });
+
+  it("shows an unsupported error when geolocation is unavailable", async () => {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined,
+    });
+    render(<Map />);
+
+    fireEvent.click(screen.getByRole("button", { name: "현재 위치 찾기" }));
+
+    expect(await screen.findByText("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.")).toBeInTheDocument();
   });
 });

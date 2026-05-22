@@ -16,7 +16,7 @@ import {
   Sun,
 } from "lucide-react";
 
-type MarkerType = "start" | "end" | "care" | "place";
+type MarkerType = "start" | "end" | "current" | "care" | "place";
 type SpotSource = "care" | "place";
 type SpotCategory = "public_facility" | "mall" | "station" | "restaurant" | "cafe" | "park";
 type AccessPolicy = "public_free" | "customer_only" | "paid_entry" | "ask_staff" | "unknown";
@@ -129,6 +129,9 @@ const createMarkerIcon = (type: MarkerType) => {
   } else if (type === "end") {
     color = "#ef4444";
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+  } else if (type === "current") {
+    color = "#2563eb";
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>`;
   } else if (type === "care") {
     color = "#ec4899";
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h.01M15 12h.01M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5M19 10A7 7 0 0 0 5 10v1a7 7 0 0 0 14 0Z"/></svg>`;
@@ -274,9 +277,12 @@ export default function Map() {
   const [center, setCenter] = useState<[number, number]>([35.6715, 139.8210]);
   const [allSpots, setAllSpots] = useState<Spot[]>([]);
 
+  const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -402,6 +408,63 @@ export default function Map() {
 
   const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
 
+  const findCurrentLocation = () =>
+    new Promise<[number, number]>((resolve, reject) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation?.getCurrentPosition) {
+        setLocationError("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.");
+        reject(new Error("unsupported"));
+        return;
+      }
+
+      setIsLocating(true);
+      setLocationError(null);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const nextLocation: [number, number] = [position.coords.latitude, position.coords.longitude];
+          setCurrentLocation(nextLocation);
+          setCenter(nextLocation);
+          setIsLocating(false);
+          resolve(nextLocation);
+        },
+        (error) => {
+          setIsLocating(false);
+          if (error.code === 1) {
+            setLocationError("브라우저 위치 권한을 허용해야 현재 위치를 사용할 수 있습니다.");
+          } else {
+            setLocationError("현재 위치를 찾지 못했습니다.");
+          }
+          reject(error);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 60_000,
+          timeout: 10_000,
+        }
+      );
+    });
+
+  const handleFindCurrentLocation = () => {
+    findCurrentLocation().catch(() => {
+      // The UI state is set inside findCurrentLocation.
+    });
+  };
+
+  const setCurrentLocationAsStart = () => {
+    if (currentLocation) {
+      setRouteStart(currentLocation);
+      setCenter(currentLocation);
+      return;
+    }
+
+    findCurrentLocation()
+      .then((location) => {
+        setRouteStart(location);
+      })
+      .catch(() => {
+        // The UI state is set inside findCurrentLocation.
+      });
+  };
+
   const startEventHandlers = useMemo(
     () => ({
       dragend() {
@@ -492,6 +555,21 @@ export default function Map() {
               출발지와 도착지를 선택하세요
             </div>
           )}
+
+          <div className="location-actions">
+            <button className="location-btn" onClick={handleFindCurrentLocation} disabled={isLocating}>
+              {isLocating ? "현재 위치 확인 중" : "현재 위치 찾기"}
+            </button>
+            <button className="location-btn primary" onClick={setCurrentLocationAsStart} disabled={isLocating}>
+              현재 위치를 출발지로
+            </button>
+          </div>
+          {currentLocation && (
+            <p className="location-status">
+              현재 위치: {currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}
+            </p>
+          )}
+          {locationError && <p className="location-error">{locationError}</p>}
 
           <button
             className="filters-toggle-btn"
@@ -659,6 +737,21 @@ export default function Map() {
           />
           <MapController center={center} />
           <MapEvents onContextMenu={setRouteEnd} />
+
+          {currentLocation && (
+            <Marker
+              position={currentLocation}
+              icon={createMarkerIcon("current")}
+            >
+              <Popup>
+                <div>
+                  <h4>현재 위치</h4>
+                  <p>{currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}</p>
+                  <button onClick={() => setRouteStart(currentLocation)}>출발지로 설정</button>
+                </div>
+              </Popup>
+            </Marker>
+          )}
 
           {routeStart && (
             <Marker
