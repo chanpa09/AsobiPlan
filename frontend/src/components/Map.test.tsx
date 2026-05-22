@@ -137,6 +137,7 @@ describe("Map", () => {
 
     expect(screen.getByRole("heading", { name: "AsobiPlan" })).toBeInTheDocument();
     expect(screen.getByText("Koto-ku Stroller Route")).toBeInTheDocument();
+    expect(screen.getByText("Google Maps 길찾기는 앱에서 열리며, 도보 계단 회피는 보장되지 않습니다.")).toBeInTheDocument();
     expect(screen.getByTestId("map-container")).toBeInTheDocument();
     expect(await screen.findByText("출발 수유소")).toBeInTheDocument();
     expect(screen.getByText("도착 카페")).toBeInTheDocument();
@@ -204,6 +205,12 @@ describe("Map", () => {
 
     await screen.findByText("출발 수유소");
     fireEvent.click(screen.getByRole("button", { name: "출발" }));
+    await waitFor(() => {
+      const googleMapsLink = screen.getAllByRole("link", { name: "Google Maps로 도착 카페 길찾기" })[0];
+      expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("destination=35.6701%2C139.8302"));
+      expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("origin=35.6728%2C139.8174"));
+      expect(googleMapsLink).toHaveAttribute("target", "_blank");
+    });
     fireEvent.click(screen.getAllByRole("button", { name: "도착" })[0]);
 
     await waitFor(() => {

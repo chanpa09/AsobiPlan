@@ -328,6 +328,14 @@ body, html {
   line-height: 1.3;
 }
 
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: 8px;
+}
+
 .item-address {
   font-size: 12px;
   color: var(--text-muted);
@@ -356,6 +364,31 @@ body, html {
 
 .set-route-btn:hover {
   opacity: 0.8;
+}
+
+.external-map-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: var(--primary-light);
+  color: var(--primary);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.external-map-link:hover {
+  opacity: 0.8;
+}
+
+.google-route-note {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 /* Amenities Tags */
@@ -509,6 +542,25 @@ body, html {
   font-weight: 600;
   font-size: 11px;
   cursor: pointer;
+}
+
+.popup-buttons {
+  display: grid;
+  gap: 6px;
+}
+
+.popup-buttons .external-map-link,
+.popup-buttons a {
+  width: 100%;
+  padding: 6px;
+  border-radius: 4px;
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 11px;
+  text-align: center;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 /* Floating info */

@@ -125,6 +125,20 @@ const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const buildGoogleMapsUrl = (destination: [number, number], origin?: [number, number] | null) => {
+  const params = new URLSearchParams({
+    api: "1",
+    destination: `${destination[0]},${destination[1]}`,
+    travelmode: "walking",
+  });
+
+  if (origin) {
+    params.set("origin", `${origin[0]},${origin[1]}`);
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+};
+
 interface MapControllerProps {
   center: [number, number];
 }
@@ -449,6 +463,9 @@ export default function Map() {
               {routeEnd && <button onClick={() => setRouteEnd(null)}>초기화</button>}
             </div>
           </div>
+          <p className="google-route-note">
+            Google Maps 길찾기는 앱에서 열리며, 도보 계단 회피는 보장되지 않습니다.
+          </p>
 
           <button 
             className="filters-toggle-btn" 
@@ -626,12 +643,24 @@ export default function Map() {
               >
                 <div className="item-header">
                   <h3>{station.name}</h3>
-                  <button 
-                    className="set-route-btn start" 
-                    onClick={(e) => { e.stopPropagation(); setRouteStart([station.latitude, station.longitude]); }}
-                  >
-                    출발
-                  </button>
+                  <div className="button-group">
+                    <button 
+                      className="set-route-btn start" 
+                      onClick={(e) => { e.stopPropagation(); setRouteStart([station.latitude, station.longitude]); }}
+                    >
+                      출발
+                    </button>
+                    <a
+                      className="external-map-link"
+                      href={buildGoogleMapsUrl([station.latitude, station.longitude], routeStart)}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Google Maps로 ${station.name} 길찾기`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Google Maps
+                    </a>
+                  </div>
                 </div>
                 <p className="item-address">{station.address}</p>
                 <div className="amenity-tags">
@@ -668,6 +697,16 @@ export default function Map() {
                     >
                       도착
                     </button>
+                    <a
+                      className="external-map-link"
+                      href={buildGoogleMapsUrl([place.latitude, place.longitude], routeStart)}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Google Maps로 ${place.name} 길찾기`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Google Maps
+                    </a>
                   </div>
                 </div>
                 <p className="item-address">{place.address}</p>
@@ -798,6 +837,14 @@ export default function Map() {
                   <p><strong>운영시간:</strong> {station.open_hours}</p>
                   <div className="popup-buttons">
                     <button onClick={() => setRouteStart([station.latitude, station.longitude])}>출발지로 설정</button>
+                    <a
+                      href={buildGoogleMapsUrl([station.latitude, station.longitude], routeStart)}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Google Maps로 ${station.name} 길찾기`}
+                    >
+                      Google Maps 길찾기
+                    </a>
                   </div>
                 </div>
               </Popup>
@@ -835,6 +882,14 @@ export default function Map() {
                   <p className="popup-reasoning">{place.reasoning}</p>
                   <div className="popup-buttons">
                     <button onClick={() => setRouteEnd([place.latitude, place.longitude])}>도착지로 설정</button>
+                    <a
+                      href={buildGoogleMapsUrl([place.latitude, place.longitude], routeStart)}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Google Maps로 ${place.name} 길찾기`}
+                    >
+                      Google Maps 길찾기
+                    </a>
                   </div>
                 </div>
               </Popup>
