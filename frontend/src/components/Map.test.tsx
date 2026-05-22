@@ -15,7 +15,6 @@ vi.mock("react-leaflet", () => ({
   ),
   Marker: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   Popup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Polyline: () => <div data-testid="route-polyline" />,
   TileLayer: () => null,
   useMap: () => ({
     getZoom: () => 15,
@@ -137,7 +136,8 @@ describe("Map", () => {
 
     expect(screen.getByRole("heading", { name: "AsobiPlan" })).toBeInTheDocument();
     expect(screen.getByText("Koto-ku Stroller Route")).toBeInTheDocument();
-    expect(screen.getByText("Google Maps 길찾기는 앱에서 열리며, 도보 계단 회피는 보장되지 않습니다.")).toBeInTheDocument();
+    expect(screen.getByText("출발지와 도착지를 모두 선택한 뒤 Google Maps에서 도보 길찾기를 엽니다. 계단 회피는 보장되지 않습니다.")).toBeInTheDocument();
+    expect(screen.getByText("출발지와 도착지를 선택하세요")).toBeInTheDocument();
     expect(screen.getByTestId("map-container")).toBeInTheDocument();
     expect(await screen.findByText("출발 수유소")).toBeInTheDocument();
     expect(screen.getByText("도착 카페")).toBeInTheDocument();
@@ -159,87 +159,37 @@ describe("Map", () => {
     });
   });
 
-  it("shows a route when the free route proxy succeeds", async () => {
-    vi.stubEnv("NEXT_PUBLIC_ROUTE_API_URL", "https://route-proxy.test/route");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/data/baby-stations.json")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(stationCollection),
-          });
-        }
-        if (url.includes("/data/places.json")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(placeCollection),
-          });
-        }
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            code: "Ok",
-            source: "ors",
-            is_fallback: false,
-            routes: [
-              {
-                geometry: {
-                  coordinates: [
-                    [139.8174, 35.6728],
-                    [139.8302, 35.6701],
-                  ],
-                  type: "LineString",
-                },
-                duration: 500,
-                distance: 1000,
-              },
-            ],
-          }),
-        });
-      })
-    );
-
+  it("opens Google Maps only after start and end are selected", async () => {
     render(<Map />);
 
     await screen.findByText("출발 수유소");
+    expect(screen.queryByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" })).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "출발" }));
-    await waitFor(() => {
-      const googleMapsLink = screen.getAllByRole("link", { name: "Google Maps로 도착 카페 길찾기" })[0];
-      expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("destination=35.6701%2C139.8302"));
-      expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("origin=35.6728%2C139.8174"));
-      expect(googleMapsLink).toHaveAttribute("target", "_blank");
-    });
+    expect(screen.queryByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" })).not.toBeInTheDocument();
+
     fireEvent.click(screen.getAllByRole("button", { name: "도착" })[0]);
 
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        "https://route-proxy.test/route",
-        expect.objectContaining({
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        })
-      );
-    });
-    const routeCall = vi.mocked(fetch).mock.calls.find(([input]) => input === "https://route-proxy.test/route");
-    expect(JSON.parse(routeCall?.[1]?.body as string)).toEqual({
-      start: { lat: 35.6728, lon: 139.8174 },
-      end: { lat: 35.6701, lon: 139.8302 },
-    });
-    expect(await screen.findByText("무료 라우팅 API 기반")).toBeInTheDocument();
-    expect(screen.getByText("1.00 km")).toBeInTheDocument();
-    expect(screen.getByTestId("route-polyline")).toBeInTheDocument();
+    const googleMapsLink = await screen.findByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" });
+    expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("origin=35.6728%2C139.8174"));
+    expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("destination=35.6701%2C139.8302"));
+    expect(googleMapsLink).toHaveAttribute("href", expect.stringContaining("travelmode=walking"));
+    expect(googleMapsLink).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("선택한 좌표는 지도에서 드래그해 조정할 수 있습니다.")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith("https://route-proxy.test/route", expect.anything());
   });
 
-  it("does not draw a fake route when the route proxy is not configured", async () => {
+  it("clears selected start and end without drawing an in-app route", async () => {
     render(<Map />);
 
     await screen.findByText("출발 수유소");
     fireEvent.click(screen.getByRole("button", { name: "출발" }));
     fireEvent.click(screen.getAllByRole("button", { name: "도착" })[0]);
 
-    expect(await screen.findByText("무료 라우팅 프록시가 아직 설정되지 않았습니다. GitHub Pages에서는 Cloudflare Worker URL을 연결해야 합니다.")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" })).toBeInTheDocument();
     expect(screen.queryByTestId("route-polyline")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "선택 해제" }));
+    expect(screen.queryByRole("link", { name: "Google Maps에서 선택한 출발지와 도착지 길찾기" })).not.toBeInTheDocument();
+    expect(screen.getByText("출발지와 도착지를 선택하세요")).toBeInTheDocument();
   });
 });

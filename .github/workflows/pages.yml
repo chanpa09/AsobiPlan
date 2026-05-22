@@ -34,20 +34,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate route proxy URL
-        run: |
-          if [ -z "$NEXT_PUBLIC_ROUTE_API_URL" ]; then
-            echo "NEXT_PUBLIC_ROUTE_API_URL repository variable is required for route calculation."
-            exit 1
-          fi
-        env:
-          NEXT_PUBLIC_ROUTE_API_URL: ${{ vars.NEXT_PUBLIC_ROUTE_API_URL }}
-
       - name: Build static site
         run: npm run build
         env:
           GITHUB_PAGES: "true"
-          NEXT_PUBLIC_ROUTE_API_URL: ${{ vars.NEXT_PUBLIC_ROUTE_API_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { 
-  Baby, Footprints, 
+  Baby,
   RefreshCw, Star, Info, Sun, Moon, SlidersHorizontal, 
   ChevronDown, ChevronUp 
 } from "lucide-react";
@@ -104,7 +104,6 @@ type FeatureCollection<T> = {
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const toDataUrl = (path: string) => `${BASE_PATH}${path}`;
-const getRouteApiUrl = () => process.env.NEXT_PUBLIC_ROUTE_API_URL || "";
 
 const featureToRecord = <T extends { latitude: number; longitude: number }>(feature: PointFeature<T>): T => {
   const [longitude, latitude] = feature.geometry.coordinates;
@@ -125,16 +124,13 @@ const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const buildGoogleMapsUrl = (destination: [number, number], origin?: [number, number] | null) => {
+const buildGoogleMapsUrl = (origin: [number, number], destination: [number, number]) => {
   const params = new URLSearchParams({
     api: "1",
+    origin: `${origin[0]},${origin[1]}`,
     destination: `${destination[0]},${destination[1]}`,
     travelmode: "walking",
   });
-
-  if (origin) {
-    params.set("origin", `${origin[0]},${origin[1]}`);
-  }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 };
@@ -174,10 +170,6 @@ export default function Map() {
   
   const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
-  const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
-  const [routeError, setRouteError] = useState<string | null>(null);
-  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Premium UI & Mode state
@@ -331,74 +323,13 @@ export default function Map() {
     });
   }, [babyStations, filterNursingRoom, filterDiaperTable, filterHotWater]);
 
-  // Request route from the configured serverless proxy.
-  const calculateRoute = useCallback(async (start: [number, number], end: [number, number]) => {
-    setIsCalculatingRoute(true);
-    setRouteError(null);
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-    try {
-      const routeApiUrl = getRouteApiUrl();
-      if (!routeApiUrl) {
-        throw new Error("Route proxy is not configured");
-      }
-
-      const res = await fetch(routeApiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          start: { lat: start[0], lon: start[1] },
-          end: { lat: end[0], lon: end[1] },
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.detail || "Route calculation failed");
-      }
-
-      const data = await res.json();
-      if (data.routes && data.routes[0]) {
-        const route = data.routes[0];
-        const coords = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
-        setRouteCoordinates(coords);
-        setRouteInfo({
-          distance: route.distance, // meters
-          duration: route.duration, // seconds
-        });
-      }
-    } catch (err) {
-      console.error("Failed to compute stroller routing:", err);
-      setRouteCoordinates([]);
-      setRouteInfo(null);
-      setRouteError(
-        err instanceof Error && err.message === "Route proxy is not configured"
-          ? "무료 라우팅 프록시가 아직 설정되지 않았습니다. GitHub Pages에서는 Cloudflare Worker URL을 연결해야 합니다."
-          : "유모차 동선을 찾을 수 없습니다. 출발지와 도착지를 조금 조정해 주세요."
-      );
-    } finally {
-      setIsCalculatingRoute(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (routeStart && routeEnd) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      calculateRoute(routeStart, routeEnd);
-    } else {
-      setRouteCoordinates([]);
-      setRouteInfo(null);
-      setRouteError(null);
-    }
-  }, [routeStart, routeEnd, calculateRoute]);
-
   // Clear current route
   const clearRoute = () => {
     setRouteStart(null);
     setRouteEnd(null);
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-    setRouteError(null);
   };
+
+  const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
 
   // Handle draggable marker drag events
   const startEventHandlers = useMemo(
@@ -464,8 +395,23 @@ export default function Map() {
             </div>
           </div>
           <p className="google-route-note">
-            Google Maps 길찾기는 앱에서 열리며, 도보 계단 회피는 보장되지 않습니다.
+            출발지와 도착지를 모두 선택한 뒤 Google Maps에서 도보 길찾기를 엽니다. 계단 회피는 보장되지 않습니다.
           </p>
+          {googleMapsRouteUrl ? (
+            <a
+              className="google-route-action"
+              href={googleMapsRouteUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Google Maps에서 선택한 출발지와 도착지 길찾기"
+            >
+              Google Maps에서 길찾기
+            </a>
+          ) : (
+            <div className="google-route-action disabled" aria-disabled="true">
+              출발지와 도착지를 선택하세요
+            </div>
+          )}
 
           <button 
             className="filters-toggle-btn" 
@@ -582,45 +528,13 @@ export default function Map() {
             </div>
           )}
 
-          {isCalculatingRoute && (
+          {(routeStart || routeEnd) && (
             <div className="route-info-box">
               <p className="safety-note">
-                <RefreshCw size={14} className="inline mr-1 animate-spin" />
-                무료 라우팅 API로 유모차 동선을 계산 중입니다.
-              </p>
-            </div>
-          )}
-
-          {routeError && (
-            <div className="route-info-box route-error-box">
-              <p className="safety-note route-error-text">
-                {routeError}
+                선택한 좌표는 지도에서 드래그해 조정할 수 있습니다.
               </p>
               <button className="clear-btn" onClick={clearRoute}>
-                동선 해제
-              </button>
-            </div>
-          )}
-
-          {routeInfo && !routeError && (
-            <div className="route-info-box">
-              <div className="route-source-badge">무료 라우팅 API 기반</div>
-              <div className="route-stats">
-                <div className="stat">
-                  <span className="label">유모차 이동 거리</span>
-                  <span className="val">{(routeInfo.distance / 1000).toFixed(2)} km</span>
-                </div>
-                <div className="stat">
-                  <span className="label">예상 소요 시간</span>
-                  <span className="val">{Math.round(routeInfo.duration / 60)}분</span>
-                </div>
-              </div>
-              <p className="safety-note">
-                <Footprints size={14} className="inline mr-1" />
-                회피 조건을 적용한 도보 기반 동선입니다.
-              </p>
-              <button className="clear-btn" onClick={clearRoute}>
-                동선 해제
+                선택 해제
               </button>
             </div>
           )}
@@ -650,16 +564,6 @@ export default function Map() {
                     >
                       출발
                     </button>
-                    <a
-                      className="external-map-link"
-                      href={buildGoogleMapsUrl([station.latitude, station.longitude], routeStart)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Google Maps로 ${station.name} 길찾기`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Google Maps
-                    </a>
                   </div>
                 </div>
                 <p className="item-address">{station.address}</p>
@@ -697,16 +601,6 @@ export default function Map() {
                     >
                       도착
                     </button>
-                    <a
-                      className="external-map-link"
-                      href={buildGoogleMapsUrl([place.latitude, place.longitude], routeStart)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Google Maps로 ${place.name} 길찾기`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Google Maps
-                    </a>
                   </div>
                 </div>
                 <p className="item-address">{place.address}</p>
@@ -762,18 +656,6 @@ export default function Map() {
           />
           <MapController center={center} />
           <MapEvents onContextMenu={setRouteEnd} />
-
-          {/* Render Route Polyline */}
-          {routeCoordinates.length > 0 && (
-            <Polyline
-              positions={routeCoordinates}
-              color="#4f46e5"
-              weight={6}
-              opacity={0.8}
-              lineCap="round"
-              lineJoin="round"
-            />
-          )}
 
           {/* Render Start Marker */}
           {routeStart && (
@@ -837,14 +719,6 @@ export default function Map() {
                   <p><strong>운영시간:</strong> {station.open_hours}</p>
                   <div className="popup-buttons">
                     <button onClick={() => setRouteStart([station.latitude, station.longitude])}>출발지로 설정</button>
-                    <a
-                      href={buildGoogleMapsUrl([station.latitude, station.longitude], routeStart)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Google Maps로 ${station.name} 길찾기`}
-                    >
-                      Google Maps 길찾기
-                    </a>
                   </div>
                 </div>
               </Popup>
@@ -882,14 +756,6 @@ export default function Map() {
                   <p className="popup-reasoning">{place.reasoning}</p>
                   <div className="popup-buttons">
                     <button onClick={() => setRouteEnd([place.latitude, place.longitude])}>도착지로 설정</button>
-                    <a
-                      href={buildGoogleMapsUrl([place.latitude, place.longitude], routeStart)}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Google Maps로 ${place.name} 길찾기`}
-                    >
-                      Google Maps 길찾기
-                    </a>
                   </div>
                 </div>
               </Popup>

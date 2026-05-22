@@ -1,14 +1,13 @@
 # AsobiPlan
 
-AsobiPlan은 도쿄 고토구 주변에서 유모차 이동을 고려해 수유실, 기저귀 교환대, 유모차 친화 장소와 도보 동선을 확인하는 웹 앱입니다.
+AsobiPlan은 도쿄 고토구 주변에서 유모차 이동을 고려해 수유실, 기저귀 교환대, 유모차 친화 장소를 찾고, 선택한 출발지와 도착지를 Google Maps 길찾기로 여는 정적 웹 앱입니다.
 
-현재 기본 배포 목표는 **무료 정적 배포**입니다.
+현재 기본 배포 목표는 **무료 GitHub Pages 배포**입니다.
 
 - 프론트엔드: Next.js static export → GitHub Pages
 - 장소 데이터: `frontend/public/data/*.json` 정적 GeoJSON
-- MVP 길찾기: Google Maps 앱/웹 딥링크
-- 앱 내부 동선 계산: Cloudflare Worker 프록시 → OpenRouteService 무료 API
-- 기존 백엔드/OSRM: 로컬 개발 또는 서버형 운영용으로 유지
+- 길찾기: Google Maps 앱/웹 딥링크
+- 서버/DB/라우팅 엔진: MVP 배포에는 필요 없음
 
 ## 무료 배포 구조
 
@@ -17,24 +16,26 @@ GitHub Pages
   └─ 정적 Next.js 앱
        ├─ /data/baby-stations.json
        ├─ /data/places.json
-       ├─ Google Maps 길찾기 링크
-       └─ NEXT_PUBLIC_ROUTE_API_URL로 Worker 호출
-
-Cloudflare Worker
-  └─ ORS_API_KEY를 숨긴 상태로 OpenRouteService 호출
+       └─ Google Maps 길찾기 링크
 ```
 
-브라우저에는 OpenRouteService API 키를 넣지 않습니다. 라우팅 API 키는 Cloudflare Worker secret으로만 저장합니다.
+OpenRouteService, Cloudflare Worker, OSRM은 현재 기본 길찾기 흐름에 필요하지 않습니다. 사용자는 앱에서 출발지와 도착지를 선택한 뒤 **Google Maps에서 길찾기** 버튼을 눌러 지도 앱으로 이동합니다.
 
 ## MVP 길찾기
 
-수유소와 유모차 친화 장소 카드에는 **Google Maps 길찾기** 링크가 있습니다. 이 링크는 API 키 없이 다음 형태의 Google Maps URL을 열어, 안드로이드/iOS에서는 설치된 지도 앱으로 자연스럽게 넘어갈 수 있습니다.
+앱은 Google Maps URL을 다음 형태로 생성합니다.
 
 ```text
-https://www.google.com/maps/dir/?api=1&destination=<lat>,<lon>&travelmode=walking
+https://www.google.com/maps/dir/?api=1&origin=<lat>,<lon>&destination=<lat>,<lon>&travelmode=walking
 ```
 
-앱 안에서 출발지를 지정한 뒤 Google Maps 링크를 누르면 `origin`도 함께 전달합니다. 다만 Google Maps 도보 길찾기는 계단 회피를 강제하는 옵션을 제공하지 않으므로, 유모차 전용 동선 보장은 Cloudflare Worker/OpenRouteService 경로 고도화에서 다룹니다.
+사용 흐름:
+
+1. 수유소나 장소 카드에서 `출발`을 선택합니다.
+2. 장소 카드, 지도 팝업, 또는 지도 우클릭으로 `도착`을 선택합니다.
+3. 상단 패널의 `Google Maps에서 길찾기`를 누릅니다.
+
+Google Maps 도보 길찾기는 계단 회피를 강제하는 옵션을 제공하지 않습니다. 따라서 앱은 장소 탐색과 출발/도착 선택에 집중하고, 실시간 내비게이션은 Google Maps에 맡깁니다.
 
 ## 로컬 실행
 
@@ -45,13 +46,6 @@ npm run dev
 ```
 
 기본 주소는 `http://localhost:3000`입니다.
-
-동선 계산까지 로컬에서 확인하려면 `NEXT_PUBLIC_ROUTE_API_URL`을 설정해야 합니다.
-
-```bash
-$env:NEXT_PUBLIC_ROUTE_API_URL="https://your-worker.your-subdomain.workers.dev"
-npm run dev
-```
 
 ## GitHub Pages 배포
 
@@ -64,44 +58,13 @@ npm run dev
 설정 순서:
 
 1. GitHub 저장소 `Settings > Pages`에서 Source를 `GitHub Actions`로 설정합니다.
-2. Cloudflare Worker를 배포합니다.
-3. GitHub 저장소 `Settings > Secrets and variables > Actions > Variables`에 `NEXT_PUBLIC_ROUTE_API_URL`을 추가하고 Worker URL을 넣습니다.
-4. `main` 브랜치에 push하면 GitHub Actions가 `frontend/out`을 GitHub Pages에 배포합니다.
+2. `main` 브랜치에 push하면 GitHub Actions가 `frontend/out`을 GitHub Pages에 배포합니다.
 
 배포 주소는 보통 다음 형태입니다.
 
 ```text
 https://chanpa09.github.io/AsobiPlan/
 ```
-
-## Cloudflare Worker 라우팅 프록시
-
-Worker 소스는 `workers/route-proxy`에 있습니다.
-
-```bash
-cd workers/route-proxy
-copy wrangler.toml.example wrangler.toml
-wrangler secret put ORS_API_KEY
-wrangler deploy
-```
-
-`wrangler.toml`의 `ALLOWED_ORIGIN`은 필수입니다. 이 값이 없거나 요청 origin이 다르면 Worker는 요청을 거부합니다. 공개 Worker URL을 통해 무료 ORS quota가 소모되는 일을 줄이기 위한 설정입니다.
-
-```toml
-[vars]
-ALLOWED_ORIGIN = "https://chanpa09.github.io"
-```
-
-프론트엔드는 Worker에 다음 형식으로 요청합니다.
-
-```json
-{
-  "start": { "lat": 35.6728, "lon": 139.8174 },
-  "end": { "lat": 35.6701, "lon": 139.8302 }
-}
-```
-
-Worker는 OpenRouteService의 `foot-walking` 경로를 호출하고, `steps` 회피 옵션을 적용한 결과를 프론트엔드가 쓰는 route 형식으로 반환합니다.
 
 ## 정적 데이터
 
@@ -120,16 +83,16 @@ cd frontend
 npm test
 npm run lint
 npm run build
+npm run test:e2e
 ```
 
 `npm run build`는 정적 export 산출물인 `frontend/out`을 생성합니다.
 
-## 서버형 로컬 아키텍처
+## 서버형 실험 구성
 
-아래 구성은 GitHub Pages 배포에는 필요하지 않지만, 자체 서버/OSRM 운영을 실험할 때 사용할 수 있습니다.
+아래 구성은 현재 GitHub Pages MVP에는 필요하지 않지만, 나중에 앱 내부 경로 표시를 다시 실험할 때 사용할 수 있습니다.
 
 - `backend`: FastAPI 기반 API 서버
 - `osrm`: 유모차 이동에 맞춘 OSRM 라우팅 프로파일과 Docker 설정
+- `workers/route-proxy`: OpenRouteService 호출용 Cloudflare Worker 예제
 - `docker-compose.yml`: PostgreSQL/PostGIS와 OSRM 실행 환경
-
-OSRM 컨테이너가 실행되지 않으면 기존 `/api/route`는 `503 Routing engine unavailable`을 반환합니다. GitHub Pages 배포에서는 이 경로를 사용하지 않고 Cloudflare Worker 라우팅 프록시를 사용합니다.
