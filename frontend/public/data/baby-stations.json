@@ -3,10 +3,16 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8174, 35.6728] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8174,
+          35.6728
+        ]
+      },
       "properties": {
         "id": 1,
-        "name": "고토구청 본청사",
+        "name": "고토구청 본청사 아기 정거장",
         "category": "public_facility",
         "address": "도쿄도 고토구 토요 4-11-28",
         "has_nursing_room": true,
@@ -19,34 +25,46 @@
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8302, 35.6701] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8174,
+          35.6698
+        ]
+      },
       "properties": {
         "id": 2,
-        "name": "이온몰 미나미스나점",
-        "category": "mall",
-        "address": "도쿄도 고토구 미나미스나 6-7-15",
-        "has_nursing_room": true,
-        "has_diaper_table": true,
-        "has_hot_water": true,
-        "open_hours": "10:00 - 22:00",
-        "access_policy": "public_free",
-        "access_note": "상업시설 공용 수유실입니다. 몰 영업시간 내 구매 없이 이용 가능한 시설로 표시합니다."
-      }
-    },
-    {
-      "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8167, 35.6720] },
-      "properties": {
-        "id": 3,
-        "name": "토요초역 지하 1층",
+        "name": "토요초역 아기 정거장",
         "category": "station",
         "address": "도쿄도 고토구 토요 4-1-2",
         "has_nursing_room": false,
         "has_diaper_table": true,
         "has_hot_water": false,
         "open_hours": "첫차 - 막차",
-        "access_policy": "unknown",
-        "access_note": "역 시설 내 기저귀 교환 가능 장소입니다. 개찰 안팎 위치와 이용 조건은 현장에서 확인해 주세요."
+        "access_policy": "public_free",
+        "access_note": "역 개찰구 내부 다목적 화장실 옆에 기저귀 교환대가 구비되어 있습니다."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8225,
+          35.671
+        ]
+      },
+      "properties": {
+        "id": 3,
+        "name": "세이유 토요초점 2층 수유실",
+        "category": "mall",
+        "address": "도쿄도 고토구 토요 6-3-2",
+        "has_nursing_room": true,
+        "has_diaper_table": true,
+        "has_hot_water": true,
+        "open_hours": "10:00 - 21:00",
+        "access_policy": "public_free",
+        "access_note": "세이유 매장 2층에 마련된 무료 유아 휴게공간입니다."
       }
     }
   ]

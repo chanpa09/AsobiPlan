@@ -9,60 +9,132 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import engine, init_db, BabyStation, StrollerFriendlyPlace, IS_SQLITE
 
-# Mock Google Places API Responses for Minamisuna/Toyocho for testing without API keys
+# Mock Google Places API Responses for Koto-ku for testing without API keys
 MOCK_PLACES = [
+    {
+        "name": "라라포트 토요스 (LaLaport Toyosu)",
+        "category": "mall",
+        "address": "도쿄도 고토구 토요스 2-1-9",
+        "latitude": 35.6548,
+        "longitude": 139.7967,
+        "google_rating": 4.2,
+        "reviews": [
+            "ベビーカーの貸出があり、通路も非常に広いです。授乳室が綺麗で大満足。",
+            "離乳食の持ち込みも問題なし。赤ちゃん連れには最高のモール。",
+            "海が見えるテラスもあり、ベビーカーでの移動もスロープが多くて楽です。"
+        ]
+    },
+    {
+        "name": "기바 공원 (Kiba Park)",
+        "category": "park",
+        "address": "도쿄도 고토구 히라노 4-6-1",
+        "latitude": 35.6749,
+        "longitude": 139.8079,
+        "google_rating": 4.3,
+        "reviews": [
+            "スロープが整備されており、ベビーカーでの散歩がとてもスムーズです。",
+            "広い公園で子供がのびのびと遊べます。多目的トイレもあります。"
+        ]
+    },
+    {
+        "name": "아리아케 가든 (Ariake Garden)",
+        "category": "mall",
+        "address": "도쿄도 고토구 아리아케 2-1-8",
+        "latitude": 35.6385,
+        "longitude": 139.7925,
+        "google_rating": 4.1,
+        "reviews": [
+            "有明ガーデンはベビーカーでの移動が本当に楽。4階のベビールームがすごく広くて綺麗でした。",
+            "エレベーターがすぐ来て、通路も広いのでストレスフリー。"
+        ]
+    },
+    {
+        "name": "도쿄 현대 미술관 (Museum of Contemporary Art Tokyo)",
+        "category": "public_facility",
+        "address": "도쿄도 고토구 히라노 4-1-1",
+        "latitude": 35.6800,
+        "longitude": 139.8080,
+        "google_rating": 4.4,
+        "reviews": [
+            "館内が広くスロープやエレベーターが完璧。ベビーカーの貸出もあり、子供と一緒に快適に美術鑑賞が楽しめました。",
+            "段差がほとんどなく、赤ちゃん連れでも安心して回れます。"
+        ]
+    },
+    {
+        "name": "토요스 공원 (Toyosu Park)",
+        "category": "park",
+        "address": "도쿄도 고토구 토요스 2-3-6",
+        "latitude": 35.6535,
+        "longitude": 139.7975,
+        "google_rating": 4.3,
+        "reviews": [
+            "ららぽーとの隣にあり、スロープや平坦な芝生があり、ベビーカーでのお散歩にぴったり。",
+            "バリアフリーで海風が気持ちいい素敵な公園です。"
+        ]
+    },
     {
         "name": "로얄 호스트 토요초점 (Royal Host)",
         "category": "restaurant",
         "address": "도쿄도 고토구 토요 4-1-1",
-        "latitude": 35.6725,
-        "longitude": 139.8160,
-        "google_rating": 4.1,
+        "latitude": 35.6706,
+        "longitude": 139.8165,
+        "google_rating": 4.0,
         "reviews": [
-            "店内が広くてベビーカーでの入店もスムーズでした。キッズメニューも豊富です。",
-            "離乳食の持ち込み도快く温めてくれました。赤ちゃん連れに最適です。",
-            "少し混雑していましたが、ソファー席が広くて居心地が良かったです。"
+            "店内が広くてベビーカーでの入店もスムーズでした。ベビーチェアがあり、子供連れに優しい。",
+            "スタッフの方が親切で席の配置にも配慮してくれました。"
         ]
     },
     {
-        "name": "미나미스나 선스모크 공원 (Sunsun Park)",
-        "category": "park",
-        "address": "도쿄도 고토구 미나미스나 2-1",
-        "latitude": 35.6705,
-        "longitude": 139.8250,
-        "google_rating": 4.3,
+        "name": "블루보틀 커피 기요스미시라카와",
+        "category": "cafe",
+        "address": "도쿄도 고토구 히라노 1-4-8",
+        "latitude": 35.6815,
+        "longitude": 139.8000,
+        "google_rating": 4.2,
         "reviews": [
-            "広くてベビーカーで散歩するのに最適。スロープも整備されています。",
-            "授乳室やオムツ替えシートは近くの商業施設を利用する必要がありますが、公園自体は平坦です。"
+            "段差がなくベビーカーでも入れますが、店内は少し狭い箇所もあり混雑時は大変かも。",
+            "テイクアウトならベビーカーでも気兼ねなく利用できます。"
+        ]
+    },
+    {
+        "name": "100 스푼즈 도요스 (100 Spoons)",
+        "category": "restaurant",
+        "address": "도쿄도 고토구 토요스 2-1-9 라라포트 도요스 3 1층",
+        "latitude": 35.6545,
+        "longitude": 139.7962,
+        "google_rating": 4.1,
+        "reviews": [
+            "離乳食が無料で提供されて感動。テーブルもベビーカーを横付けできるよう広くなっています。",
+            "キッズメニューも大人顔負けのクオリティ。子連れには聖地。"
         ]
     },
     {
         "name": "스타벅스 커피 미나미스나점",
         "category": "cafe",
         "address": "도쿄도 고토구 미나미스나 3-12-1",
-        "latitude": 35.6695,
-        "longitude": 139.8285,
+        "latitude": 35.6703,
+        "longitude": 139.8290,
         "google_rating": 3.9,
         "reviews": [
-            "ベビーカーだと通路が少し狭い箇所がありますが、テラス席なら快適です。",
-            "スタッフが親切でドアを開けてくれました。"
+            "テラス席はベビーカーを置きやすいですが、店内はやや狭いのでテラスがお勧めです。",
+            "少し通路が狭いですが、親切に対応してもらえました。"
         ]
     },
     {
-        "name": "토요초 라멘집 (Stairs Entrance)",
+        "name": "토요초 야키니쿠 한류관",
         "category": "restaurant",
-        "address": "도쿄도 고토구 토요 3-15",
-        "latitude": 35.6710,
-        "longitude": 139.8145,
-        "google_rating": 3.8,
+        "address": "도쿄도 고토구 토요 3-15-3",
+        "latitude": 35.6696,
+        "longitude": 139.8131,
+        "google_rating": 3.7,
         "reviews": [
-            "入り口が階段のみで、店内もカウンター席のみ。ベビーカー連れには厳しいです。",
-            "味は美味しいが、子供連れで行く場所ではない."
+            "入り口に急な階段があり、ベビーカーを持ち上げるのは無理でした。店内も狭い。",
+            "席が狭くカウンターメインなので赤ちゃん連れで行く場所ではないです。"
         ]
     }
 ]
 
-# Mock Baby Stations in Minamisuna/Toyocho
+# Mock Baby Stations in Koto-ku
 MOCK_BABY_STATIONS = [
     {
         "name": "고토구청 본청사 아기 정거장",
@@ -75,6 +147,26 @@ MOCK_BABY_STATIONS = [
         "open_hours": "08:30 - 17:15"
     },
     {
+        "name": "라라포트 토요스 수유실",
+        "address": "도쿄도 고토구 토요스 2-1-9",
+        "latitude": 35.6548,
+        "longitude": 139.7967,
+        "has_nursing_room": True,
+        "has_diaper_table": True,
+        "has_hot_water": True,
+        "open_hours": "10:00 - 21:00"
+    },
+    {
+        "name": "아리아케 가든 4층 유아 휴게실",
+        "address": "도쿄도 고토구 아리아케 2-1-8",
+        "latitude": 35.6385,
+        "longitude": 139.7925,
+        "has_nursing_room": True,
+        "has_diaper_table": True,
+        "has_hot_water": True,
+        "open_hours": "10:00 - 21:00"
+    },
+    {
         "name": "이온몰 미나미스나점 아기 정거장",
         "address": "도쿄도 고토구 미나미스나 6-7-15",
         "latitude": 35.6701,
@@ -85,10 +177,40 @@ MOCK_BABY_STATIONS = [
         "open_hours": "10:00 - 22:00"
     },
     {
-        "name": "토요초역 아기 정거장 (지하 1층)",
+        "name": "도쿄 현대 미술관 수유실",
+        "address": "도쿄도 고토구 히라노 4-1-1",
+        "latitude": 35.6800,
+        "longitude": 139.8080,
+        "has_nursing_room": True,
+        "has_diaper_table": True,
+        "has_hot_water": True,
+        "open_hours": "10:00 - 18:00"
+    },
+    {
+        "name": "토요초역 아기 정거장",
         "address": "도쿄도 고토구 토요 4-1-2",
-        "latitude": 35.6720,
-        "longitude": 139.8167,
+        "latitude": 35.6698,
+        "longitude": 139.8174,
+        "has_nursing_room": False,
+        "has_diaper_table": True,
+        "has_hot_water": False,
+        "open_hours": "첫차 - 막차"
+    },
+    {
+        "name": "기바역 아기 정거장",
+        "address": "도쿄도 고토구 기바 5-1-1",
+        "latitude": 35.6698,
+        "longitude": 139.8071,
+        "has_nursing_room": False,
+        "has_diaper_table": True,
+        "has_hot_water": False,
+        "open_hours": "첫차 - 막차"
+    },
+    {
+        "name": "토요스역 아기 정거장",
+        "address": "도쿄도 고토구 토요스 2-1-1",
+        "latitude": 35.6545,
+        "longitude": 139.7960,
         "has_nursing_room": False,
         "has_diaper_table": True,
         "has_hot_water": False,
@@ -234,7 +356,7 @@ def run_import():
                 os.remove(db_file)
                 print("Deleted existing SQLite database file to recreate schema.")
             except Exception as e:
-                print(f"Could not delete database file: {e}")
+                print(f"Skipping database file deletion (database file might be locked): {type(e).__name__}")
 
     db = Session(bind=engine)
     

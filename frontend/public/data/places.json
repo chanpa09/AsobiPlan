@@ -3,82 +3,179 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8160, 35.6725] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8165,
+          35.6706
+        ]
+      },
       "properties": {
         "id": 1,
-        "name": "로얄 호스트 토요초점 (Royal Host)",
+        "name": "로얄 호스트 토요초점 (Royal Host Toyocho)",
         "category": "restaurant",
         "address": "도쿄도 고토구 토요 4-1-1",
-        "google_rating": 4.1,
+        "google_rating": 4.0,
         "stroller_score": 5,
-        "reasoning": "공간이 넓고 유모차 진입이 수월하다는 긍정적인 평이 많습니다.",
-        "review_keywords": ["유모차", "이유식", "넓은통로"],
-        "has_ramp": false,
-        "doorway_width": "wide",
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차",
+          "이유식",
+          "경사로",
+          "턱있음"
+        ],
+        "has_ramp": true,
+        "doorway_width": "medium",
         "has_baby_chair": true,
         "has_stroller_parking": false,
         "access_policy": "customer_only",
-        "access_note": "매장 내 편의시설은 식사 또는 매장 이용 시 제공되는 것으로 표시합니다."
+        "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8250, 35.6705] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.817,
+          35.6695
+        ]
+      },
       "properties": {
         "id": 2,
-        "name": "미나미스나 선스모크 공원 (Sunsun Park)",
-        "category": "park",
-        "address": "도쿄도 고토구 미나미스나 2-1",
-        "google_rating": 4.3,
+        "name": "스타벅스 커피 토요초점 (Starbucks Coffee)",
+        "category": "cafe",
+        "address": "도쿄도 고토구 토요 4-1-2",
+        "google_rating": 4.1,
         "stroller_score": 5,
-        "reasoning": "공원 자체가 평탄하고 경사로가 정비되어 유모차 산책에 적합합니다.",
-        "review_keywords": ["유모차", "경사로"],
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차"
+        ],
+        "has_ramp": false,
+        "doorway_width": "medium",
+        "has_baby_chair": false,
+        "has_stroller_parking": true,
+        "access_policy": "customer_only",
+        "access_note": "음료 주문 시 매장 내 시설 이용이 가능합니다."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8182,
+          35.672
+        ]
+      },
+      "properties": {
+        "id": 3,
+        "name": "토요 4초메 공원 (Toyo 4-chome Park)",
+        "category": "park",
+        "address": "도쿄도 고토구 토요 4-4-1",
+        "google_rating": 3.9,
+        "stroller_score": 5,
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차",
+          "경사로",
+          "턱있음"
+        ],
         "has_ramp": true,
-        "doorway_width": "wide",
+        "doorway_width": "medium",
         "has_baby_chair": false,
         "has_stroller_parking": false,
         "access_policy": "public_free",
-        "access_note": "공원은 무료 개방 공간으로 표시합니다. 시설별 운영시간은 현장에서 확인해 주세요."
+        "access_note": "언제나 자유롭게 입장 및 산책이 가능합니다."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8285, 35.6695] },
-      "properties": {
-        "id": 3,
-        "name": "스타벅스 커피 미나미스나점",
-        "category": "cafe",
-        "address": "도쿄도 고토구 미나미스나 3-12-1",
-        "google_rating": 3.9,
-        "stroller_score": 3,
-        "reasoning": "일부 통로가 좁지만 테라스석과 친절한 직원 응대가 장점입니다.",
-        "review_keywords": ["유모차", "좁음"],
-        "has_ramp": false,
-        "doorway_width": "narrow",
-        "has_baby_chair": false,
-        "has_stroller_parking": false,
-        "access_policy": "customer_only",
-        "access_note": "매장 좌석과 편의시설은 주문 후 이용 가능한 것으로 표시합니다."
-      }
-    },
-    {
-      "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [139.8145, 35.6710] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8142,
+          35.6701
+        ]
+      },
       "properties": {
         "id": 4,
-        "name": "토요초 라멘집 (Stairs Entrance)",
-        "category": "restaurant",
-        "address": "도쿄도 고토구 토요 3-15",
+        "name": "구도 토요초 빌딩 (Kudo Toyocho Building)",
+        "category": "mall",
+        "address": "도쿄도 고토구 토요 3-27-24",
         "google_rating": 3.8,
-        "stroller_score": 1,
-        "reasoning": "입구가 계단이고 좌석이 좁아 유모차 방문에는 적합하지 않습니다.",
-        "review_keywords": ["계단있음", "좁음"],
-        "has_ramp": false,
-        "doorway_width": "narrow",
+        "stroller_score": 5,
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차",
+          "경사로",
+          "엘리베이터"
+        ],
+        "has_ramp": true,
+        "doorway_width": "medium",
         "has_baby_chair": false,
         "has_stroller_parking": false,
+        "access_policy": "public_free",
+        "access_note": "빌딩 내 상업 시설 및 로비는 자유롭게 이용 가능합니다."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8115,
+          35.669
+        ]
+      },
+      "properties": {
+        "id": 5,
+        "name": "가이샤쿠 커피 (Kaishaku Coffee)",
+        "category": "cafe",
+        "address": "도쿄도 고토구 토요 3-18-5",
+        "google_rating": 4.3,
+        "stroller_score": 4,
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차",
+          "턱있음"
+        ],
+        "has_ramp": false,
+        "doorway_width": "medium",
+        "has_baby_chair": false,
+        "has_stroller_parking": true,
         "access_policy": "customer_only",
-        "access_note": "매장 이용 고객 기준으로 표시합니다. 유모차 방문은 추천하지 않습니다."
+        "access_note": "테이크아웃 또는 소규모 좌석 주문 시 이용할 수 있습니다."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          139.8225,
+          35.671
+        ]
+      },
+      "properties": {
+        "id": 6,
+        "name": "세이유 토요초점 (SEIYU Toyocho)",
+        "category": "mall",
+        "address": "도쿄도 고토구 토요 6-3-2",
+        "google_rating": 3.7,
+        "stroller_score": 5,
+        "reasoning": "리뷰 분석 결과: 보통 수준의 유모차 이용 환경입니다.",
+        "review_keywords": [
+          "유모차",
+          "엘리베이터"
+        ],
+        "has_ramp": true,
+        "doorway_width": "medium",
+        "has_baby_chair": false,
+        "has_stroller_parking": false,
+        "access_policy": "public_free",
+        "access_note": "마트 영업시간 동안 무료로 출입 및 기저귀 교환실 이용이 가능합니다."
       }
     }
   ]

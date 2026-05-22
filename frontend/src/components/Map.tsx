@@ -4,17 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import {
-  Baby,
-  ChevronDown,
-  ChevronUp,
-  Info,
-  Moon,
-  RefreshCw,
-  SlidersHorizontal,
-  Star,
-  Sun,
-} from "lucide-react";
+
 
 type MarkerType = "start" | "end" | "current" | "care" | "place";
 type SpotSource = "care" | "place";
@@ -117,27 +107,79 @@ const ACCESS_POLICY_LABELS: Record<AccessPolicy, string> = {
   unknown: "확인 필요",
 };
 
+const AMENITY_LABELS: Record<keyof Spot["amenities"], { label: string; icon: string }> = {
+  nursing_room: { label: "수유실", icon: "baby_changing_station" },
+  diaper_table: { label: "기저귀 교환대", icon: "crib" },
+  hot_water: { label: "온수", icon: "water_drop" },
+  ramp: { label: "경사로", icon: "accessible_forward" },
+  baby_chair: { label: "아기의자", icon: "child_care" },
+  stroller_parking: { label: "유모차주차", icon: "stroller" },
+  wide_doorway: { label: "넓은출입문", icon: "sensor_door" },
+};
+
+const renderStars = (score: number) => {
+  return (
+    <div className="flex items-center gap-0.5 my-1.5" aria-label={`유모차 친화도 별점 5점 만점에 ${score}점`}>
+      {Array.from({ length: 5 }).map((_, i) => {
+        const isFilled = i < score;
+        return (
+          <span
+            key={i}
+            className={`material-symbols-outlined text-[16px] ${
+              isFilled ? "text-secondary filled-icon" : "text-outline-variant"
+            }`}
+          >
+            star
+          </span>
+        );
+      })}
+      <span className="text-[12px] font-bold text-on-surface-variant ml-1">{score}/5</span>
+    </div>
+  );
+};
+
+const renderAmenityTags = (amenities: Spot["amenities"]) => {
+  return (
+    <div className="flex flex-wrap gap-1 mt-2 mb-2">
+      {Object.entries(amenities).map(([key, val]) => {
+        if (!val) return null;
+        const info = AMENITY_LABELS[key as keyof Spot["amenities"]];
+        if (!info) return null;
+        return (
+          <span
+            key={key}
+            className="inline-flex items-center gap-1 bg-tertiary-container/20 text-on-tertiary-container text-[11px] px-2 py-0.5 rounded-full border border-tertiary-container/30"
+          >
+            <span className="material-symbols-outlined text-[12px]">{info.icon}</span>
+            {info.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 const toDataUrl = (path: string) => `${BASE_PATH}${path}`;
 
 const createMarkerIcon = (type: MarkerType) => {
-  let color = "#4f46e5";
+  let color = "#944748"; // default primary color matching Stitch theme
   let iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
 
   if (type === "start") {
-    color = "#10b981";
+    color = "#2c6956"; // green-ish tertiary
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
   } else if (type === "end") {
-    color = "#ef4444";
+    color = "#ba1a1a"; // error red
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
   } else if (type === "current") {
-    color = "#2563eb";
+    color = "#326690"; // blue
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>`;
   } else if (type === "care") {
-    color = "#ec4899";
+    color = "#ff9e9e"; // primary container tint
     iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h.01M15 12h.01M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5M19 10A7 7 0 0 0 5 10v1a7 7 0 0 0 14 0Z"/></svg>`;
   } else if (type === "place") {
-    color = "#f59e0b";
-    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+    color = "#fcd664"; // yellow accent
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#745c00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
   }
 
   const html = `
@@ -262,29 +304,60 @@ function MapController({ center }: MapControllerProps) {
 
 interface MapEventsProps {
   onContextMenu: (position: [number, number]) => void;
+  onCenterChange: (position: [number, number]) => void;
+  center: [number, number];
 }
 
-function MapEvents({ onContextMenu }: MapEventsProps) {
-  useMapEvents({
+function MapEvents({ onContextMenu, onCenterChange, center }: MapEventsProps) {
+  const map = useMapEvents({
     contextmenu(e) {
       onContextMenu([e.latlng.lat, e.latlng.lng]);
+    },
+    moveend() {
+      const newCenter = map.getCenter();
+      const latDiff = Math.abs(newCenter.lat - center[0]);
+      const lngDiff = Math.abs(newCenter.lng - center[1]);
+      // 소수점 5자리 미만(약 1미터 이내 오차)의 미세한 변화는 무시하여 무한 업데이트 루프를 방지합니다.
+      if (latDiff > 0.0001 || lngDiff > 0.0001) {
+        onCenterChange([newCenter.lat, newCenter.lng]);
+      }
     },
   });
   return null;
 }
 
-export default function Map() {
-  const [center, setCenter] = useState<[number, number]>([35.6715, 139.8210]);
+interface MapProps {
+  center?: [number, number];
+  onCenterChange?: (center: [number, number]) => void;
+  selectedSpotId?: string | null;
+  onSpotSelect?: (id: string | null) => void;
+}
+
+export default function Map({
+  center: propCenter,
+  onCenterChange,
+  selectedSpotId,
+  onSpotSelect,
+}: MapProps = {}) {
+  const defaultCenter: [number, number] = [35.6620, 139.8100];
+  const [internalCenter, setInternalCenter] = useState<[number, number]>(defaultCenter);
+  
+  const center = propCenter || internalCenter;
+  const setCenter = (newCenter: [number, number]) => {
+    if (onCenterChange) {
+      onCenterChange(newCenter);
+    } else {
+      setInternalCenter(newCenter);
+    }
+  };
+
   const [allSpots, setAllSpots] = useState<Spot[]>([]);
 
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [filterMinScore, setFilterMinScore] = useState<number>(1);
   const [filterCategory, setFilterCategory] = useState<string>("");
@@ -295,10 +368,19 @@ export default function Map() {
   const [filterBabyChair, setFilterBabyChair] = useState<boolean>(false);
   const [filterFreeOnly, setFilterFreeOnly] = useState<boolean>(false);
 
-  const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
+  const [internalSelectedSpotId, setInternalSelectedSpotId] = useState<string | null>(null);
+  const activeSpotId = selectedSpotId !== undefined ? selectedSpotId : internalSelectedSpotId;
+  const setActiveSpotId = (id: string | null) => {
+    if (onSpotSelect) {
+      onSpotSelect(id);
+    } else {
+      setInternalSelectedSpotId(id);
+    }
+  };
+
   const startMarkerRef = useRef<L.Marker | null>(null);
   const endMarkerRef = useRef<L.Marker | null>(null);
-  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const markerRefs = useRef<Record<string, L.Marker | null>>({});
 
   useEffect(() => {
     if (darkMode) {
@@ -349,7 +431,6 @@ export default function Map() {
 
   useEffect(() => {
     const loadStaticData = async () => {
-      setLoading(true);
       try {
         const [stationsRes, placesRes] = await Promise.all([
           fetch(toDataUrl("/data/baby-stations.json")),
@@ -367,17 +448,29 @@ export default function Map() {
         ]);
       } catch (error) {
         console.error("Error loading static data:", error);
-      } finally {
-        setLoading(false);
       }
     };
 
     loadStaticData();
   }, []);
 
+  useEffect(() => {
+    if (activeSpotId && markerRefs.current[activeSpotId]) {
+      const marker = markerRefs.current[activeSpotId];
+      if (marker) {
+        const latLng = marker.getLatLng();
+        setCenter([latLng.lat, latLng.lng]);
+        // Leaflet 마커가 렌더링되고 지도가 이동하는 타이밍을 배려해 약간의 딜레이를 주거나 즉시 호출합니다.
+        setTimeout(() => {
+          marker.openPopup();
+        }, 100);
+      }
+    }
+  }, [activeSpotId]);
+
   const spots = useMemo(() => {
     return allSpots.filter((spot) => {
-      if (haversineDistance(center[0], center[1], spot.latitude, spot.longitude) > 1200) return false;
+      if (haversineDistance(center[0], center[1], spot.latitude, spot.longitude) > 3500) return false;
       if (spot.stroller_score < filterMinScore) return false;
       if (filterCategory && spot.category !== filterCategory) return false;
       if (filterRamp && !spot.amenities.ramp) return false;
@@ -386,6 +479,14 @@ export default function Map() {
       if (filterHotWater && !spot.amenities.hot_water) return false;
       if (filterBabyChair && !spot.amenities.baby_chair) return false;
       if (filterFreeOnly && spot.access_policy !== "public_free") return false;
+      
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = spot.name.toLowerCase().includes(q);
+        const matchesAddress = spot.address.toLowerCase().includes(q);
+        if (!matchesName && !matchesAddress) return false;
+      }
+      
       return true;
     });
   }, [
@@ -399,40 +500,24 @@ export default function Map() {
     filterMinScore,
     filterNursingRoom,
     filterRamp,
+    searchQuery,
   ]);
-
-  const clearRoute = () => {
-    setRouteStart(null);
-    setRouteEnd(null);
-  };
-
-  const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
 
   const findCurrentLocation = () =>
     new Promise<[number, number]>((resolve, reject) => {
       if (typeof navigator === "undefined" || !navigator.geolocation?.getCurrentPosition) {
-        setLocationError("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.");
         reject(new Error("unsupported"));
         return;
       }
 
-      setIsLocating(true);
-      setLocationError(null);
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const nextLocation: [number, number] = [position.coords.latitude, position.coords.longitude];
           setCurrentLocation(nextLocation);
           setCenter(nextLocation);
-          setIsLocating(false);
           resolve(nextLocation);
         },
         (error) => {
-          setIsLocating(false);
-          if (error.code === 1) {
-            setLocationError("브라우저 위치 권한을 허용해야 현재 위치를 사용할 수 있습니다.");
-          } else {
-            setLocationError("현재 위치를 찾지 못했습니다.");
-          }
           reject(error);
         },
         {
@@ -442,12 +527,6 @@ export default function Map() {
         }
       );
     });
-
-  const handleFindCurrentLocation = () => {
-    findCurrentLocation().catch(() => {
-      // The UI state is set inside findCurrentLocation.
-    });
-  };
 
   const setCurrentLocationAsStart = () => {
     if (currentLocation) {
@@ -461,7 +540,7 @@ export default function Map() {
         setRouteStart(location);
       })
       .catch(() => {
-        // The UI state is set inside findCurrentLocation.
+        // Handled inside findCurrentLocation
       });
   };
 
@@ -491,350 +570,151 @@ export default function Map() {
     []
   );
 
-  const renderAmenityTags = (spot: Spot) => (
-    <>
-      {spot.amenities.nursing_room && <span className="tag nursing">수유실</span>}
-      {spot.amenities.diaper_table && <span className="tag diaper">기저귀 교환대</span>}
-      {spot.amenities.hot_water && <span className="tag water">온수</span>}
-      {spot.amenities.baby_chair && <span className="tag baby-chair">아기의자</span>}
-      {spot.amenities.ramp && <span className="tag ramp">경사로</span>}
-      {spot.amenities.wide_doorway && <span className="tag doorway">넓은 출입문</span>}
-    </>
-  );
-
   return (
-    <div className="app-container">
-      <div className="control-panel">
-        <div className="panel-header">
-          <div className="brand">
-            <Baby className="brand-icon" />
-            <h1>AsobiPlan</h1>
-          </div>
-          <span className="badge">Koto-ku Stroller Route</span>
-        </div>
+    <div className="w-full h-full relative z-0 bg-background text-on-background font-sans">
+      <MapContainer
+        center={center}
+        zoom={14}
+        style={{ width: "100%", height: "100%", zIndex: 0 }}
+        zoomControl={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url={darkMode
+            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          }
+        />
+        <MapController center={center} />
+        <MapEvents onContextMenu={setRouteEnd} onCenterChange={setCenter} center={center} />
 
-        <div className="panel-section">
-          <h2>출발지 & 도착지 설정</h2>
-          <div className="route-picker">
-            <div className="picker-input">
-              <span className="dot green"></span>
-              <input
-                type="text"
-                readOnly
-                placeholder={routeStart ? `${routeStart[0].toFixed(4)}, ${routeStart[1].toFixed(4)}` : "장소 카드에서 출발 선택"}
-                value={routeStart ? "출발지 지정 완료" : ""}
-              />
-              {routeStart && <button onClick={() => setRouteStart(null)}>초기화</button>}
-            </div>
-            <div className="picker-input mt-2">
-              <span className="dot red"></span>
-              <input
-                type="text"
-                readOnly
-                placeholder={routeEnd ? `${routeEnd[0].toFixed(4)}, ${routeEnd[1].toFixed(4)}` : "장소 카드에서 도착 선택"}
-                value={routeEnd ? "도착지 지정 완료" : ""}
-              />
-              {routeEnd && <button onClick={() => setRouteEnd(null)}>초기화</button>}
-            </div>
-          </div>
-          <p className="google-route-note">
-            출발지와 도착지를 모두 선택한 뒤 Google Maps에서 도보 길찾기를 엽니다. 계단 회피는 보장되지 않습니다.
-          </p>
-          {googleMapsRouteUrl ? (
-            <a
-              className="google-route-action"
-              href={googleMapsRouteUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Google Maps에서 선택한 출발지와 도착지 길찾기"
-            >
-              Google Maps에서 길찾기
-            </a>
-          ) : (
-            <div className="google-route-action disabled" aria-disabled="true">
-              출발지와 도착지를 선택하세요
-            </div>
-          )}
-
-          <div className="location-actions">
-            <button className="location-btn" onClick={handleFindCurrentLocation} disabled={isLocating}>
-              {isLocating ? "현재 위치 확인 중" : "현재 위치 찾기"}
-            </button>
-            <button className="location-btn primary" onClick={setCurrentLocationAsStart} disabled={isLocating}>
-              현재 위치를 출발지로
-            </button>
-          </div>
-          {currentLocation && (
-            <p className="location-status">
-              현재 위치: {currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}
-            </p>
-          )}
-          {locationError && <p className="location-error">{locationError}</p>}
-
-          <button
-            className="filters-toggle-btn"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <SlidersHorizontal size={14} />
-            상세 필터 설정
-            {showFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-
-          {showFilters && (
-            <div className="filters-panel">
-              <h3>장소 유형과 편의시설</h3>
-
-              <div className="filter-slider-container">
-                <div className="filter-slider-header">
-                  <span>최소 유모차 친화 점수</span>
-                  <span>{filterMinScore}점 이상</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  value={filterMinScore}
-                  onChange={(e) => setFilterMinScore(Number(e.target.value))}
-                  className="filter-slider"
-                />
-              </div>
-
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="filter-select"
-              >
-                <option value="">모든 장소 유형</option>
-                <option value="public_facility">공공시설</option>
-                <option value="mall">상업시설</option>
-                <option value="station">역</option>
-                <option value="cafe">카페</option>
-                <option value="restaurant">음식점</option>
-                <option value="park">공원</option>
-              </select>
-
-              <div className="filters-grid">
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterNursingRoom} onChange={(e) => setFilterNursingRoom(e.target.checked)} />
-                  수유실 있음
-                </label>
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterDiaperTable} onChange={(e) => setFilterDiaperTable(e.target.checked)} />
-                  기저귀 교환대 있음
-                </label>
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterHotWater} onChange={(e) => setFilterHotWater(e.target.checked)} />
-                  온수 있음
-                </label>
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterFreeOnly} onChange={(e) => setFilterFreeOnly(e.target.checked)} />
-                  무료 개방만
-                </label>
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterRamp} onChange={(e) => setFilterRamp(e.target.checked)} />
-                  경사로 있음
-                </label>
-                <label className="filter-checkbox-label">
-                  <input type="checkbox" checked={filterBabyChair} onChange={(e) => setFilterBabyChair(e.target.checked)} />
-                  아기의자 있음
-                </label>
-              </div>
-            </div>
-          )}
-
-          {(routeStart || routeEnd) && (
-            <div className="route-info-box">
-              <p className="safety-note">
-                선택한 좌표는 지도에서 드래그해 조정할 수 있습니다.
-              </p>
-              <button className="clear-btn" onClick={clearRoute}>
-                선택 해제
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="panel-section list-section">
-          <h2>장소 목록 ({spots.length})</h2>
-          <div className="scroll-list">
-            {spots.map((spot) => (
-              <div
-                key={spot.id}
-                ref={(el) => { itemRefs.current[spot.id] = el; }}
-                className={`list-item ${highlightedSpotId === spot.id ? "highlighted" : ""}`}
-                onClick={() => {
-                  setCenter([spot.latitude, spot.longitude]);
-                  setHighlightedSpotId(spot.id);
-                }}
-              >
-                <div className="item-header">
-                  <div>
-                    <div className="item-meta-row">
-                      <span className="category-badge">{CATEGORY_LABELS[spot.category]}</span>
-                      <span className={`access-badge access-${spot.access_policy}`}>{ACCESS_POLICY_LABELS[spot.access_policy]}</span>
-                    </div>
-                    <h3>{spot.name}</h3>
-                  </div>
-                  <div className="button-group">
-                    <button
-                      className="set-route-btn start"
-                      onClick={(e) => { e.stopPropagation(); setRouteStart([spot.latitude, spot.longitude]); }}
-                    >
-                      출발
-                    </button>
-                    <button
-                      className="set-route-btn end"
-                      onClick={(e) => { e.stopPropagation(); setRouteEnd([spot.latitude, spot.longitude]); }}
-                    >
-                      도착
-                    </button>
-                  </div>
-                </div>
-                <p className="item-address">{spot.address}</p>
-                <div className="amenity-tags">{renderAmenityTags(spot)}</div>
-                <p className="access-note">{spot.access_note}</p>
-                {spot.source === "place" && (
-                  <>
-                    <div className="score-row">
-                      <div className="stars">
-                        {Array.from({ length: spot.stroller_score }).map((_, i) => (
-                          <Star key={`filled-${i}`} size={14} className="star-icon filled" />
-                        ))}
-                        {Array.from({ length: 5 - spot.stroller_score }).map((_, i) => (
-                          <Star key={`empty-${i}`} size={14} className="star-icon" />
-                        ))}
-                      </div>
-                      <span className="score-badge">유모차 친화도: {spot.stroller_score}/5</span>
-                    </div>
-                    <p className="reasoning-text">{spot.reasoning}</p>
-                  </>
-                )}
-              </div>
-            ))}
-            {spots.length === 0 && <p className="empty-text">조건에 맞는 장소가 없습니다.</p>}
-          </div>
-        </div>
-
-        <button className="refresh-btn" onClick={() => setCenter([center[0], center[1]])} disabled={loading}>
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          현 위치 기준 데이터 갱신
-        </button>
-      </div>
-
-      <div className="map-view">
-        <MapContainer
-          center={center}
-          zoom={15}
-          style={{ width: "100%", height: "100%" }}
-          zoomControl={false}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url={darkMode
-              ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            }
-          />
-          <MapController center={center} />
-          <MapEvents onContextMenu={setRouteEnd} />
-
-          {currentLocation && (
-            <Marker
-              position={currentLocation}
-              icon={createMarkerIcon("current")}
-            >
-              <Popup>
-                <div>
-                  <h4>현재 위치</h4>
-                  <p>{currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}</p>
+        {currentLocation && (
+          <Marker position={currentLocation} icon={createMarkerIcon("current")}>
+            <Popup>
+              <div className="map-popup">
+                <h4>현재 위치</h4>
+                <p>{currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}</p>
+                <div className="popup-buttons">
                   <button onClick={() => setRouteStart(currentLocation)}>출발지로 설정</button>
                 </div>
-              </Popup>
-            </Marker>
-          )}
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
-          {routeStart && (
-            <Marker
-              position={routeStart}
-              icon={createMarkerIcon("start")}
-              draggable={true}
-              eventHandlers={startEventHandlers}
-              ref={startMarkerRef}
-            >
-              <Popup>
-                <div>
-                  <h4>출발지 (드래그 가능)</h4>
-                  <p>{routeStart[0].toFixed(4)}, {routeStart[1].toFixed(4)}</p>
+        {routeStart && (
+          <Marker
+            position={routeStart}
+            icon={createMarkerIcon("start")}
+            draggable={true}
+            eventHandlers={startEventHandlers}
+            ref={startMarkerRef}
+          >
+            <Popup>
+              <div className="map-popup">
+                <h4>출발지 (드래그 가능)</h4>
+                <p>{routeStart[0].toFixed(4)}, {routeStart[1].toFixed(4)}</p>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {routeEnd && (
+          <Marker
+            position={routeEnd}
+            icon={createMarkerIcon("end")}
+            draggable={true}
+            eventHandlers={endEventHandlers}
+            ref={endMarkerRef}
+          >
+            <Popup>
+              <div className="map-popup">
+                <h4>도착지 (드래그 가능)</h4>
+                <p>{routeEnd[0].toFixed(4)}, {routeEnd[1].toFixed(4)}</p>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {spots.map((spot) => (
+          <Marker
+            key={spot.id}
+            position={[spot.latitude, spot.longitude]}
+            icon={createMarkerIcon(spot.source === "care" ? "care" : "place")}
+            ref={(ref) => {
+              markerRefs.current[spot.id] = ref;
+            }}
+            eventHandlers={{
+              click: () => {
+                setActiveSpotId(spot.id);
+              },
+            }}
+          >
+            <Popup>
+              <div className="map-popup max-w-[280px]">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <h3 className="font-bold text-sm text-on-surface leading-tight m-0">{spot.name}</h3>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap font-medium ${
+                    spot.source === "care" ? "bg-primary-container/20 text-primary" : "bg-secondary-container/20 text-on-secondary-container"
+                  }`}>
+                    {CATEGORY_LABELS[spot.category] || "장소"}
+                  </span>
                 </div>
-              </Popup>
-            </Marker>
-          )}
+                
+                <p className="text-[11px] text-on-surface-variant m-0 mb-1 leading-snug">{spot.address}</p>
+                
+                {spot.source === "place" && renderStars(spot.stroller_score)}
+                
+                {spot.reasoning && (
+                  <p className="text-[11px] text-on-surface-variant bg-surface-container-low p-2 rounded my-1.5 leading-relaxed font-body-md border border-surface-container-high">
+                    {spot.reasoning}
+                  </p>
+                )}
 
-          {routeEnd && (
-            <Marker
-              position={routeEnd}
-              icon={createMarkerIcon("end")}
-              draggable={true}
-              eventHandlers={endEventHandlers}
-              ref={endMarkerRef}
-            >
-              <Popup>
-                <div>
-                  <h4>도착지 (드래그 가능)</h4>
-                  <p>{routeEnd[0].toFixed(4)}, {routeEnd[1].toFixed(4)}</p>
-                </div>
-              </Popup>
-            </Marker>
-          )}
-
-          {spots.map((spot) => (
-            <Marker
-              key={spot.id}
-              position={[spot.latitude, spot.longitude]}
-              icon={createMarkerIcon(spot.source === "care" ? "care" : "place")}
-              eventHandlers={{
-                click: () => {
-                  setHighlightedSpotId(spot.id);
-                  setTimeout(() => {
-                    const el = itemRefs.current[spot.id];
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                    }
-                  }, 100);
-                },
-              }}
-            >
-              <Popup>
-                <div className="map-popup">
-                  <h3>{spot.name}</h3>
-                  <p>{spot.address}</p>
-                  <p><strong>유형:</strong> {CATEGORY_LABELS[spot.category]}</p>
-                  {spot.open_hours && <p><strong>운영시간:</strong> {spot.open_hours}</p>}
-                  <p><strong>이용조건:</strong> {ACCESS_POLICY_LABELS[spot.access_policy]}</p>
-                  <div className="amenity-tags popup-amenities">{renderAmenityTags(spot)}</div>
-                  <div className="popup-buttons">
-                    <button onClick={() => setRouteStart([spot.latitude, spot.longitude])}>출발지로 설정</button>
-                    <button onClick={() => setRouteEnd([spot.latitude, spot.longitude])}>도착지로 설정</button>
+                {spot.review_keywords && spot.review_keywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {spot.review_keywords.map((kw, i) => (
+                      <span key={i} className="text-[10px] text-primary bg-primary-container/10 px-1 py-0.5 rounded">
+                        #{kw}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                {renderAmenityTags(spot.amenities)}
+                
+                <div className="text-[10px] text-on-surface-variant flex flex-col gap-0.5 border-t border-surface-container-high pt-1.5 mt-1.5">
+                  {spot.open_hours && (
+                    <div className="flex gap-1">
+                      <strong className="w-12 shrink-0">운영시간:</strong>
+                      <span>{spot.open_hours}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-1">
+                    <strong className="w-12 shrink-0">이용조건:</strong>
+                    <span>{ACCESS_POLICY_LABELS[spot.access_policy]}</span>
                   </div>
                 </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
-
-        <div className="floating-hint">
-          <Info size={16} />
-          <span>장소 카드에서 출발지와 도착지를 선택하세요.</span>
-        </div>
-
-        <button
-          className="dark-mode-toggle"
-          onClick={() => setDarkMode(!darkMode)}
-          aria-label="다크 모드 전환"
-        >
-          {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
-      </div>
+                
+                <div className="popup-buttons mt-2 flex gap-1 border-t border-surface-container-high pt-2">
+                  <button 
+                    onClick={() => setRouteStart([spot.latitude, spot.longitude])}
+                    className="flex-1 bg-surface-container-high text-on-surface hover:bg-surface-variant text-[11px] py-1 rounded text-center transition-colors font-medium"
+                  >
+                    출발지로 설정
+                  </button>
+                  <button 
+                    onClick={() => setRouteEnd([spot.latitude, spot.longitude])}
+                    className="flex-1 bg-primary text-white hover:bg-primary/95 text-[11px] py-1 rounded text-center transition-colors font-medium"
+                  >
+                    도착지로 설정
+                  </button>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
     </div>
   );
 }
