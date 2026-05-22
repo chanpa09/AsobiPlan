@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local temp / intermediate data
+stitch_temp/
+public/data/*.pending-geocode.json

@@ -1,31 +1,77 @@
-export default function SearchBar() {
+import type { SpotCategory } from "@/lib/spots";
+
+interface SearchBarProps {
+  query: string;
+  nursingRoom: boolean;
+  ramp: boolean;
+  category: SpotCategory | "";
+  onQueryChange: (query: string) => void;
+  onNursingRoomToggle: () => void;
+  onRampToggle: () => void;
+  onCategoryChange: (category: SpotCategory | "") => void;
+  onFilterToggle: () => void;
+}
+
+const chipClass = (active: boolean) =>
+  `px-4 py-1.5 rounded-full border font-label-lg text-label-lg whitespace-nowrap flex items-center gap-1 transition-colors ${
+    active
+      ? "border-primary bg-primary-container text-on-primary-container"
+      : "border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container-low"
+  }`;
+
+export default function SearchBar({
+  query,
+  nursingRoom,
+  ramp,
+  category,
+  onQueryChange,
+  onNursingRoomToggle,
+  onRampToggle,
+  onCategoryChange,
+  onFilterToggle,
+}: SearchBarProps) {
   return (
-    <div className="hidden md:flex flex-col gap-4 p-margin-desktop pb-2 absolute top-0 left-0 right-0 z-30 pointer-events-none">
+    <div className="hidden md:flex flex-col gap-3 p-6 pb-2 absolute top-0 left-0 right-0 z-30 pointer-events-none">
       <div className="flex gap-4 pointer-events-auto">
-        <div className="flex-1 max-w-2xl bg-surface shadow-md rounded-full px-6 py-3 flex items-center gap-3 border border-surface-container-high transition-shadow hover:shadow-lg">
+        <label className="flex-1 max-w-xl bg-surface/95 backdrop-blur-md shadow-md rounded-full px-5 py-3 flex items-center gap-3 border border-surface-container-high transition-all duration-300 hover:shadow-lg focus-within:shadow-[0_0_0_3px_rgba(148,71,72,0.2)] focus-within:border-primary">
           <span className="material-symbols-outlined text-outline">search</span>
-          <input 
-            type="text" 
-            placeholder="고토구에서 어디로 가볼까요?" 
-            className="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline font-body-md p-0 outline-none" 
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고토구에서 어디로 가볼까요?"
+            className="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline font-body-md p-0 outline-none"
           />
-          <button className="text-primary hover:text-primary-container transition-colors">
+          <button
+            type="button"
+            className="text-primary hover:text-on-primary-container transition-colors"
+            onClick={onFilterToggle}
+            aria-label="상세 필터 설정"
+          >
             <span className="material-symbols-outlined">tune</span>
           </button>
-        </div>
+        </label>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-2 pointer-events-auto hide-scrollbar">
-        <button className="px-4 py-1.5 rounded-full border border-outline-variant bg-surface text-on-surface-variant font-label-lg text-label-lg hover:bg-surface-container-low transition-colors whitespace-nowrap flex items-center gap-1">
-          <span className="material-symbols-outlined text-[16px]">stroller</span> 유모차 접근성
+      <div className="flex gap-2 overflow-x-auto pb-2 pointer-events-auto hide-scrollbar max-w-2xl">
+        <button type="button" className={chipClass(ramp)} onClick={onRampToggle}>
+          <span className="material-symbols-outlined text-[16px]">stroller</span> 이동 편의 좋음
         </button>
-        <button className="px-4 py-1.5 rounded-full border border-primary bg-primary-container text-on-primary-container font-label-lg text-label-lg whitespace-nowrap flex items-center gap-1">
+        <button type="button" className={chipClass(nursingRoom)} onClick={onNursingRoomToggle}>
           <span className="material-symbols-outlined text-[16px]">baby_changing_station</span> 수유실 있음
         </button>
-        <button className="px-4 py-1.5 rounded-full border border-outline-variant bg-surface text-on-surface-variant font-label-lg text-label-lg hover:bg-surface-container-low transition-colors whitespace-nowrap flex items-center gap-1">
-          <span className="material-symbols-outlined text-[16px]">park</span> 실외 놀이터
+        <button
+          type="button"
+          className={chipClass(category === "park")}
+          onClick={() => onCategoryChange(category === "park" ? "" : "park")}
+        >
+          <span className="material-symbols-outlined text-[16px]">park</span> 공원
         </button>
-        <button className="px-4 py-1.5 rounded-full border border-outline-variant bg-surface text-on-surface-variant font-label-lg text-label-lg hover:bg-surface-container-low transition-colors whitespace-nowrap flex items-center gap-1">
-          <span className="material-symbols-outlined text-[16px]">restaurant</span> 키즈 메뉴
+        <button
+          type="button"
+          className={chipClass(category === "restaurant" || category === "cafe")}
+          onClick={() => onCategoryChange(category === "restaurant" || category === "cafe" ? "" : "restaurant")}
+        >
+          <span className="material-symbols-outlined text-[16px]">restaurant</span> 음식점
         </button>
       </div>
     </div>

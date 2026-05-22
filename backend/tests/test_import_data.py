@@ -1,3 +1,6 @@
+import pytest
+
+from scripts.collect_places import main as collect_places_main
 from scripts.import_data import run_keyword_analysis
 
 
@@ -22,3 +25,11 @@ def test_run_keyword_analysis_scores_stairs_and_narrow_space():
     assert result["has_ramp"] is False
     assert result["doorway_width"] == "narrow"
     assert "계단있음" in result["review_keywords"]
+
+
+def test_collect_places_live_requires_google_places_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_PLACES_API_KEY", raising=False)
+    monkeypatch.setattr("scripts.collect_places.load_environment", lambda: None)
+
+    with pytest.raises(RuntimeError, match="--live requires GOOGLE_PLACES_API_KEY"):
+        collect_places_main(["--live"])

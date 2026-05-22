@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import SearchBar from "@/components/home/SearchBar";
 import PlaceCard from "@/components/home/PlaceCard";
+import {
+  buildGoogleMapsUrl,
+  CATEGORY_LABELS,
+  DEFAULT_CENTER,
+  filterSpots,
+  loadStaticSpots,
+  type MarkerPosition,
+  type Spot,
+  type SpotCategory,
+  type SpotFilters,
+} from "@/lib/spots";
 
 const Map = dynamic(() => import("../components/Map"), {
   ssr: false,
@@ -14,108 +25,378 @@ const Map = dynamic(() => import("../components/Map"), {
   ),
 });
 
-export default function Home() {
-  const [mapCenter, setMapCenter] = useState<[number, number]>([35.6620, 139.8100]);
-  const [activeSpotId, setActiveSpotId] = useState<string | null>(null);
+const DEFAULT_FILTERS: SpotFilters = {
+  minScore: 1,
+  category: "",
+  ramp: false,
+  nursingRoom: false,
+  diaperTable: false,
+  hotWater: false,
+  babyChair: false,
+  freeOnly: false,
+};
 
-  const recommendedPlaces = [
-    {
-      id: "place-1",
-      coordinates: [35.6548, 139.7967],
-      title: "라라포트 도요스",
-      category: "쇼핑몰",
-      categoryType: "primary" as const,
-      description: "넓은 통로와 훌륭한 수유 시설을 갖춘 대형 쇼핑몰. 아이들을 위한 실내 놀이터와 키즈 프렌들리 레스토랑이 다수 입점해 있습니다.",
-      imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCR8HnbR71FzqquH07OSTM2O6mpsCZz2UqfFYLRU2sqOrq-xOL2fEhqsHYrclDa1lulTxMFCQGmZI5k8WxN5QOOX2OVZpa4SFOYCYjtBMdwOKkC4BCziim2raZqkO7-sxesJjj46BDky51OGIsi7CE0xCtZdWMFL6LzBREAZ83viP_7OlwZUBJg4wcH3C0VII3B_u7FBO1uPzGpZKPyIkhTCR1250WTLS3Fggbo3knA7oQlMhGopQ_fANeasACkTYROwwfXLQJyfKg",
-      isRecommended: true,
-      layout: "vertical" as const,
-      amenities: [
-        { icon: "stroller", title: "유모차 대여 가능" },
-        { icon: "baby_changing_station", title: "수유실" },
-        { icon: "restaurant", title: "키즈 메뉴" }
-      ]
-    },
-    {
-      id: "place-2",
-      coordinates: [35.6749, 139.8079],
-      title: "기바 공원",
-      category: "공원",
-      categoryType: "tertiary" as const,
-      description: "넓은 잔디밭과 현대미술관이 인접해 있어 가족 피크닉에 최적의 장소입니다.",
-      imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCfcxwxvLWZqISuS0qZ74QwkRUN-u8Cz2lyJCGJZlePCcOy3rkzQtuPrlQ_keK9i3hH91IXpqLoh3W2NZqZBLKWWVNr6shpZ-W046vQmLdTkdI4HbVz4QWeus2rWmHo3qwMUlnTKDWWzwXAS90w4sffZBEym9X7ju8_xI-Lfh1PR5_fhkxhVdwSg4OdKFx68YKJmt_KgbU-k9bPoatGPACCNCNMzqY6hEJl5eTMY-b7bEsNArul64G4-KAauwVAsHWgbxx400MzRco",
-      layout: "horizontal" as const,
-      amenities: [
-        { icon: "park", title: "공원" },
-        { icon: "accessible_forward", title: "유모차 접근 용이" }
-      ]
-    },
-    {
-      id: "place-8",
-      coordinates: [35.6545, 139.7962],
-      title: "100 스푼즈 도요스",
-      category: "식당",
-      categoryType: "secondary" as const,
-      description: "아이들을 위한 세심한 배려가 돋보이는 레스토랑. 이유식 무료 제공 서비스가 있습니다.",
-      imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuA6Udne2zTA45NA8jRIK3-859DiVEVU6SZy0mCVeArVGYJiQTsMSKW3nHVA2lN_VN7tP5fPjfY2UUBKZSAt0aPyXIN1wJf_DdOqV5NTZydMYorN1Txn1WyF9iVtCTxprmvd_3TcotQdyZVkItNaxRG3ru4ybLJg60KziIpll8oietrN82ga_OAaXwzwOdD-NTq8AjBUzSJBsN_sYYJ0sg_ivx-R4s-QKUna5OUse85-EzEse1gIFc88r3RLfw7ieTjz7W3TfW5uZYI",
-      layout: "horizontal" as const,
-      amenities: [
-        { icon: "restaurant", title: "식당" },
-        { icon: "child_care", title: "키즈 케어" }
-      ]
+const formatPosition = (position: MarkerPosition | null) =>
+  position ? `${position[0].toFixed(4)}, ${position[1].toFixed(4)}` : "미선택";
+
+export default function Home() {
+  const [mapCenter, setMapCenter] = useState<MarkerPosition>(DEFAULT_CENTER);
+  const [listCenter, setListCenter] = useState<MarkerPosition>(DEFAULT_CENTER);
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [activeSpotId, setActiveSpotId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<SpotFilters>(DEFAULT_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<MarkerPosition | null>(null);
+  const [routeStart, setRouteStart] = useState<MarkerPosition | null>(null);
+  const [routeEnd, setRouteEnd] = useState<MarkerPosition | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    loadStaticSpots()
+      .then((loadedSpots) => {
+        if (!alive) return;
+        setSpots(loadedSpots);
+        setDataError(null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setDataError("장소 데이터를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (alive) setIsLoadingData(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const visibleSpots = useMemo(
+    () => filterSpots(spots, listCenter, searchQuery, filters),
+    [filters, listCenter, searchQuery, spots]
+  );
+
+  const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
+  const activeSpot = visibleSpots.find((spot) => spot.id === activeSpotId) || null;
+
+  const updateFilter = <K extends keyof SpotFilters>(key: K, value: SpotFilters[K]) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSelectSpot = (spot: Spot) => {
+    setActiveSpotId(spot.id);
+    setMapCenter([spot.latitude, spot.longitude]);
+    setListCenter([spot.latitude, spot.longitude]);
+  };
+
+  const handleMapCenterChange = useCallback((center: MarkerPosition) => {
+    setMapCenter(center);
+    setListCenter(center);
+  }, []);
+
+  const findCurrentLocation = (options: { updateListCenter: boolean }) =>
+    new Promise<MarkerPosition>((resolve, reject) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation?.getCurrentPosition) {
+        setLocationError("이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.");
+        reject(new Error("unsupported"));
+        return;
+      }
+
+      setIsLocating(true);
+      setLocationError(null);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const nextLocation: MarkerPosition = [position.coords.latitude, position.coords.longitude];
+          setCurrentLocation(nextLocation);
+          setMapCenter(nextLocation);
+          if (options.updateListCenter) {
+            setListCenter(nextLocation);
+          }
+          setIsLocating(false);
+          resolve(nextLocation);
+        },
+        (error) => {
+          setIsLocating(false);
+          setLocationError(error.code === 1 ? "브라우저 위치 권한을 허용해야 현재 위치를 사용할 수 있습니다." : "현재 위치를 찾지 못했습니다.");
+          reject(error);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 60_000,
+          timeout: 10_000,
+        }
+      );
+    });
+
+  const handleFindCurrentLocation = () => {
+    findCurrentLocation({ updateListCenter: true }).catch(() => {
+      console.warn("Geolocation failed. Falling back to default center.");
+      setCurrentLocation(DEFAULT_CENTER);
+      setMapCenter(DEFAULT_CENTER);
+      setListCenter(DEFAULT_CENTER);
+    });
+  };
+
+  const handleCurrentLocationAsStart = () => {
+    if (currentLocation) {
+      setRouteStart(currentLocation);
+      setMapCenter(currentLocation);
+      return;
     }
-  ];
+
+    findCurrentLocation({ updateListCenter: false })
+      .then((location) => setRouteStart(location))
+      .catch(() => {
+        console.warn("Geolocation failed. Falling back to default center for route start.");
+        setRouteStart(DEFAULT_CENTER);
+        setMapCenter(DEFAULT_CENTER);
+        setCurrentLocation(DEFAULT_CENTER);
+      });
+  };
+
+  const clearRoute = () => {
+    setRouteStart(null);
+    setRouteEnd(null);
+  };
+
+  const panelTitle = searchQuery || filters.category || filters.nursingRoom || filters.ramp ? "검색 결과" : "추천 장소";
 
   return (
     <div className="flex-1 flex flex-col md:flex-row relative h-full w-full">
-      <SearchBar />
-      
-      {/* Map Area */}
-      <div className="w-full md:w-2/3 h-[50vh] md:h-full bg-surface-container-lowest relative z-0">
+      <SearchBar
+        query={searchQuery}
+        nursingRoom={filters.nursingRoom}
+        ramp={filters.ramp}
+        category={filters.category}
+        onQueryChange={setSearchQuery}
+        onNursingRoomToggle={() => updateFilter("nursingRoom", !filters.nursingRoom)}
+        onRampToggle={() => updateFilter("ramp", !filters.ramp)}
+        onCategoryChange={(category) => updateFilter("category", category)}
+        onFilterToggle={() => setShowFilters((value) => !value)}
+      />
+
+      <div className="w-full md:flex-1 h-[50vh] md:h-full bg-surface-container-lowest relative z-0">
         <Map
           center={mapCenter}
-          onCenterChange={setMapCenter}
+          spots={visibleSpots}
           selectedSpotId={activeSpotId}
+          currentLocation={currentLocation}
+          routeStart={routeStart}
+          routeEnd={routeEnd}
+          onCenterChange={handleMapCenterChange}
           onSpotSelect={setActiveSpotId}
+          onRouteStartChange={setRouteStart}
+          onRouteEndChange={setRouteEnd}
         />
-        {/* Floating Map Controls */}
+
         <div className="absolute bottom-margin-desktop right-margin-desktop flex flex-col gap-2 z-20 hidden md:flex pointer-events-auto">
-          <button className="w-12 h-12 bg-surface shadow-md rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
+          <button
+            type="button"
+            className="w-12 h-12 bg-surface shadow-md rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors disabled:opacity-60"
+            onClick={handleFindCurrentLocation}
+            disabled={isLocating}
+            aria-label="현재 위치 찾기"
+          >
             <span className="material-symbols-outlined">my_location</span>
           </button>
-          <div className="flex flex-col bg-surface shadow-md rounded-full overflow-hidden">
-            <button className="w-12 h-12 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors border-b border-surface-container-high">
-              <span className="material-symbols-outlined">add</span>
-            </button>
-            <button className="w-12 h-12 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
-              <span className="material-symbols-outlined">remove</span>
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Floating Side Panel */}
-      <div className="w-full md:w-1/3 h-[50vh] md:h-full bg-surface md:bg-surface/95 backdrop-blur-md shadow-[-4px_0_24px_rgba(0,0,0,0.05)] md:border-l border-outline-variant flex flex-col z-20">
-        <div className="p-6 md:pt-32 border-b border-surface-container-high bg-surface sticky top-0 z-10">
-          <h2 className="font-headline-lg text-headline-lg text-on-surface mb-1">추천 장소</h2>
-          <p className="font-body-md text-body-md text-on-surface-variant">현재 위치 주변의 가족 친화적인 장소들입니다.</p>
+      <aside className="w-full md:w-[390px] md:shrink-0 h-[50vh] md:h-full bg-surface md:bg-surface/95 backdrop-blur-md shadow-[-4px_0_24px_rgba(0,0,0,0.05)] md:border-l border-outline-variant flex flex-col z-20">
+        <div className="p-5 md:p-6 border-b border-surface-container-high bg-surface sticky top-0 z-10">
+          <div className="md:hidden mb-4">
+            <label className="bg-surface-container-lowest rounded-full px-4 py-2 flex items-center gap-2 border border-surface-container-high">
+              <span className="material-symbols-outlined text-outline">search</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="장소, 주소, 키워드 검색"
+                className="w-full bg-transparent border-none outline-none text-on-surface placeholder:text-outline"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-headline-lg text-headline-lg text-on-surface mb-1">{panelTitle}</h2>
+              <p className="font-body-md text-body-md text-on-surface-variant">
+                {isLoadingData ? "장소 데이터를 불러오는 중입니다." : `현재 지도 주변 ${visibleSpots.length}곳`}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-full border border-outline-variant px-3 py-2 text-primary font-label-lg text-label-lg hover:bg-surface-container-low"
+              onClick={() => setShowFilters((value) => !value)}
+              aria-expanded={showFilters}
+            >
+              상세 필터 설정
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-surface-container-lowest border border-surface-container-high p-4 shadow-sm">
+            {/* Timeline UI for Route Start/End */}
+            <div className="flex flex-col relative pl-6 gap-4">
+              {/* Vertical dashed line */}
+              <div className="absolute left-2.5 top-2 bottom-2 w-[1px] border-l border-dashed border-outline/50" />
+
+              {/* Start Point */}
+              <div className="flex items-center justify-between gap-3 relative z-10">
+                {/* Bullet */}
+                <div className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 border-white bg-tertiary shadow-sm flex items-center justify-center">
+                  <div className="w-1 h-1 rounded-full bg-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-[10px] font-semibold text-tertiary leading-none uppercase tracking-wider mb-0.5">출발지</span>
+                  <span className="block text-[12px] font-semibold text-on-surface truncate">
+                    {routeStart ? formatPosition(routeStart) : "출발지를 선택해 주세요."}
+                  </span>
+                </div>
+                {routeStart && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-primary hover:text-on-primary-container bg-primary-container/20 rounded-full px-2 py-0.5 font-semibold transition-colors cursor-pointer"
+                    onClick={() => setRouteStart(null)}
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+
+              {/* End Point */}
+              <div className="flex items-center justify-between gap-3 relative z-10">
+                {/* Bullet */}
+                <div className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 border-white bg-error shadow-sm flex items-center justify-center">
+                  <div className="w-1 h-1 rounded-full bg-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-[10px] font-semibold text-error leading-none uppercase tracking-wider mb-0.5">도착지</span>
+                  <span className="block text-[12px] font-semibold text-on-surface truncate">
+                    {routeEnd ? formatPosition(routeEnd) : "도착지를 선택해 주세요."}
+                  </span>
+                </div>
+                {routeEnd && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-primary hover:text-on-primary-container bg-primary-container/20 rounded-full px-2 py-0.5 font-semibold transition-colors cursor-pointer"
+                    onClick={() => setRouteEnd(null)}
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="shrink-0 rounded-full border border-outline-variant px-3 py-2 text-primary font-bold text-label-lg hover:bg-surface-container-low transition-colors cursor-pointer disabled:opacity-60"
+                onClick={handleCurrentLocationAsStart}
+                disabled={isLocating}
+              >
+                현재 위치를 출발지로
+              </button>
+              {googleMapsRouteUrl ? (
+                <a
+                  className="flex-1 rounded-full bg-primary px-3 py-2 text-center text-on-primary font-bold text-label-lg animate-pulse hover:animate-none hover:bg-primary-fixed-dim hover:text-on-primary-fixed shadow-md transition-all cursor-pointer"
+                  href={googleMapsRouteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Google Maps에서 선택한 출발지와 도착지 길찾기"
+                >
+                  Google Maps에서 길찾기
+                </a>
+              ) : (
+                <div className="flex-1 rounded-full bg-surface-container-high px-3 py-2 text-center text-on-surface-variant font-medium text-label-lg border border-outline-variant/10">
+                  출발/도착 선택
+                </div>
+              )}
+            </div>
+
+            {(routeStart || routeEnd) && (
+              <button type="button" className="mt-2 text-[12px] font-semibold text-primary hover:underline cursor-pointer" onClick={clearRoute}>
+                출발지와 도착지 모두 선택 해제
+              </button>
+            )}
+            {currentLocation && <p className="mt-2 text-[11px] text-on-surface-variant">현재 위치: {formatPosition(currentLocation)}</p>}
+            {locationError && <p className="mt-2 text-[11px] text-error font-medium">{locationError}</p>}
+          </div>
+
+          {showFilters && (
+            <div className="mt-4 rounded-2xl border border-surface-container-high bg-surface-container-lowest p-4 flex flex-col gap-3 animate-slideDown">
+              <label className="flex flex-col gap-1 text-[12px] text-on-surface-variant">
+                최소 AI 이동 점수: {filters.minScore}점 이상
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={filters.minScore}
+                  onChange={(event) => updateFilter("minScore", Number(event.target.value))}
+                  className="accent-primary"
+                />
+              </label>
+              <select
+                value={filters.category}
+                onChange={(event) => updateFilter("category", event.target.value as SpotCategory | "")}
+                className="rounded-xl border border-outline-variant bg-surface px-3 py-2 text-on-surface"
+              >
+                <option value="">모든 장소 유형</option>
+                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2 text-[12px] text-on-surface">
+                {[
+                  ["nursingRoom", "수유실 있음"],
+                  ["diaperTable", "기저귀 교환대 있음"],
+                  ["hotWater", "온수 있음"],
+                  ["freeOnly", "무료 개방만"],
+                  ["ramp", "경사로 있음"],
+                  ["babyChair", "아기의자 있음"],
+                ].map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(filters[key as keyof SpotFilters])}
+                      onChange={(event) => updateFilter(key as keyof SpotFilters, event.target.checked as never)}
+                      className="accent-primary"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-stack-lg pb-24">
-          {recommendedPlaces.map((place, index) => (
+
+        <div className="flex-1 overflow-y-auto p-5 md:p-6 flex flex-col gap-stack-md pb-24">
+          {dataError && <p className="rounded-2xl bg-error-container p-4 text-on-error-container">{dataError}</p>}
+          {!dataError && visibleSpots.length === 0 && !isLoadingData && (
+            <p className="rounded-2xl bg-surface-container-lowest border border-surface-container-high p-4 text-on-surface-variant">
+              조건에 맞는 장소가 없습니다. 검색어나 필터를 줄여보세요.
+            </p>
+          )}
+          {visibleSpots.map((spot) => (
             <PlaceCard
-              key={index}
-              {...place}
-              onClick={() => {
-                if (place.coordinates) {
-                  setMapCenter(place.coordinates as [number, number]);
-                }
-                if (place.id) {
-                  setActiveSpotId(place.id);
-                }
-              }}
+              key={spot.id}
+              spot={spot}
+              active={activeSpot?.id === spot.id}
+              routeStart={routeStart}
+              routeEnd={routeEnd}
+              onSelect={handleSelectSpot}
+              onSetStart={setRouteStart}
+              onSetEnd={setRouteEnd}
             />
           ))}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

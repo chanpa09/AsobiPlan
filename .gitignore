@@ -61,3 +61,6 @@ Thumbs.db
 # Deployment / local tool state
 .vercel/
 .antigravitycli/
+
+# Local reference / temp
+ui_reference/

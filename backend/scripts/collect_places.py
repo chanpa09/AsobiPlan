@@ -1,17 +1,12 @@
+import argparse
 import os
 import sys
 import json
-import requests
-from dotenv import load_dotenv
-from sqlalchemy.orm import Session
 
 # Add backend directory to system path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database import engine, init_db, BabyStation, StrollerFriendlyPlace, IS_SQLITE
-
-# Load environment variables
-load_dotenv()
+from scripts.keyword_analysis import analyze_stroller_friendliness_ai, run_keyword_analysis
 
 # Center Coordinates: Toyocho Station (35.6698, 139.8174)
 TOYOCHO_LAT = 35.6698
@@ -33,7 +28,8 @@ FALLBACK_PLACES = [
             "東陽町駅近くで一番子連れで使いやすいファミレス。離乳食の持ち込みも快く対応してくれました。"
         ],
         "access_policy": "customer_only",
-        "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다."
+        "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다.",
+        "child_summary": "경사로와 아기의자가 갖춰져 있고 이유식 메뉴도 있어, 유모차 가족이 편하게 식사할 수 있어요."
     },
     {
         "name": "스타벅스 커피 토요초점 (Starbucks Coffee)",
@@ -48,7 +44,8 @@ FALLBACK_PLACES = [
             "スタッフの対応はとても親切で、ベビーカー連れでもドアを開けて手伝ってくれました。"
         ],
         "access_policy": "customer_only",
-        "access_note": "음료 주문 시 매장 내 시설 이용이 가능합니다."
+        "access_note": "음료 주문 시 매장 내 시설 이용이 가능합니다.",
+        "child_summary": "유모차 보관 구역이 있어서 유모차를 동반하고도 편안하게 커피 한 잔 마시며 쉬어갈 수 있는 카페예요."
     },
     {
         "name": "토요 4초메 공원 (Toyo 4-chome Park)",
@@ -62,7 +59,8 @@ FALLBACK_PLACES = [
             "ベンチが多く、緑豊かで子供との散歩に最適な公園です。多目的トイレもあります。"
         ],
         "access_policy": "public_free",
-        "access_note": "언제나 자유롭게 입장 및 산책이 가능합니다."
+        "access_note": "언제나 자유롭게 입장 및 산책이 가능합니다.",
+        "child_summary": "경사로가 마련된 넓은 공원으로 유모차 산책에 최적화되어 있으나, 일부 노면 턱이 있으니 유의하세요."
     },
     {
         "name": "구도 토요초 빌딩 (Kudo Toyocho Building)",
@@ -76,7 +74,8 @@ FALLBACK_PLACES = [
             "通路も広めでストレスなく回れます。子供向けの設備もあります。"
         ],
         "access_policy": "public_free",
-        "access_note": "빌딩 내 상업 시설 및 로비는 자유롭게 이용 가능합니다."
+        "access_note": "빌딩 내 상업 시설 및 로비는 자유롭게 이용 가능합니다.",
+        "child_summary": "경사로 진입 및 엘리베이터 이동이 편리하여 유모차로 다양한 상업 시설을 쾌적하게 둘러볼 수 있어요."
     },
     {
         "name": "가이샤쿠 커피 (Kaishaku Coffee)",
@@ -90,7 +89,8 @@ FALLBACK_PLACES = [
             "アットホームでベビーカーをたたんで店内に置かせてくれました。テイクアウトも可能です。"
         ],
         "access_policy": "customer_only",
-        "access_note": "테이크아웃 또는 소규모 좌석 주문 시 이용할 수 있습니다."
+        "access_note": "테이크아웃 또는 소규모 좌석 주문 시 이용할 수 있습니다.",
+        "child_summary": "유모차 주차가 가능하나 매장 내부 공간이 협소하고 진입 시 약간의 턱이 있어 주의가 필요해요."
     },
     {
         "name": "세이유 토요초점 (SEIYU Toyocho)",
@@ -104,7 +104,8 @@ FALLBACK_PLACES = [
             "エレベーターもあり、授乳スペースやオムツ替えシートも完備されているので買い物に便利です。"
         ],
         "access_policy": "public_free",
-        "access_note": "마트 영업시간 동안 무료로 출입 및 기저귀 교환실 이용이 가능합니다."
+        "access_note": "마트 영업시간 동안 무료로 출입 및 기저귀 교환실 이용이 가능합니다.",
+        "child_summary": "마트 내 엘리베이터와 넓은 동선이 확보되어 있고, 2층에 아기 정거장 수유실이 있어 안심하고 장을 볼 수 있어요."
     }
 ]
 
@@ -147,138 +148,34 @@ FALLBACK_BABY_STATIONS = [
     }
 ]
 
-def analyze_stroller_friendliness_ai(reviews: list) -> dict:
-    """
-    Evaluate stroller friendliness and detailed features using Gemini API if available.
-    Falls back to keyword analysis if GEMINI_API_KEY is not set or fails.
-    """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or api_key in ["your_gemini_api_key_here", ""]:
-        return run_keyword_analysis(reviews)
-        
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Collect stroller-friendly places around Toyocho.")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Require GOOGLE_PLACES_API_KEY and fail instead of using mock fallback when the key is missing.",
+    )
+    return parser.parse_args(argv)
+
+
+def is_configured_api_key(api_key: str | None) -> bool:
+    return bool(api_key) and api_key != "your_google_places_api_key_here"
+
+
+def load_environment():
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        
-        reviews_text = "\n---\n".join(reviews)
-        
-        prompt = f"""
-You are an expert at evaluating places (restaurants, cafes, parks) for stroller-friendliness based on customer reviews.
-Analyze the following customer reviews for a place and determine accessibility features.
+        from dotenv import load_dotenv
+    except ImportError:
+        return
 
-Reviews:
-\"\"\"
-{reviews_text}
-\"\"\"
-
-Response MUST be a valid JSON object matching the following structure:
-{{
-  "stroller_score": 4, // Integer from 1 (terrible, stairs-only, narrow) to 5 (excellent, spacious, ramped, elevator)
-  "reasoning": "한글로 작성된 짧은 요약 (최대 2문장). 예: '넓은 유모차 진입 공간과 친절한 서비스가 돋보입니다.'",
-  "review_keywords": ["유모차", "넓음", "엘리베이터"], // Array of strings (in Korean) representing keywords mentioned in reviews.
-  "has_ramp": true, // Boolean. True if ramp/slope is mentioned or implied, false otherwise.
-  "doorway_width": "wide", // String. One of: "wide", "medium", "narrow" (default to "medium" if unclear).
-  "has_baby_chair": true, // Boolean. True if baby chairs are available/mentioned.
-  "has_stroller_parking": false // Boolean. True if stroller parking or storage area is mentioned.
-}}
-
-Ensure the response is ONLY raw JSON. Do not include markdown code block formatting (like ```json ... ```) or any other text.
-"""
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        text_response = response.text.strip()
-        
-        # Remove markdown fence if returned despite prompt instruction
-        if text_response.startswith("```"):
-            lines = text_response.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines[-1].startswith("```"):
-                lines = lines[:-1]
-            text_response = "\n".join(lines).strip()
-            
-        data = json.loads(text_response)
-        return {
-            "stroller_score": int(data.get("stroller_score", 3)),
-            "reasoning": str(data.get("reasoning", "보통 수준의 유모차 이용 환경입니다.")),
-            "review_keywords": list(data.get("review_keywords", [])),
-            "has_ramp": bool(data.get("has_ramp", False)),
-            "doorway_width": str(data.get("doorway_width", "medium")),
-            "has_baby_chair": bool(data.get("has_baby_chair", False)),
-            "has_stroller_parking": bool(data.get("has_stroller_parking", False))
-        }
-    except Exception as e:
-        print(f"Gemini API analysis failed: {e}. Falling back to keyword analysis.")
-        return run_keyword_analysis(reviews)
-
-def run_keyword_analysis(reviews: list) -> dict:
-    keywords = {
-        "ベビーカー": 2, # stroller
-        "広い": 1,        # wide/spacious
-        "離乳食": 2,      # baby food friendly
-        "スロープ": 1.5,   # ramp
-        "エレベーター": 1.5, # elevator
-        "段差": -1,       # step/bump
-        "狭い": -2,       # narrow
-        "階段": -2        # stairs
-    }
-    
-    score = 3.0 # default base rating
-    matched_keywords = []
-    
-    text_content = " ".join(reviews)
-    for kw, val in keywords.items():
-        if kw in text_content:
-            score += val
-            matched_keywords.append(kw)
-            
-    # Clamp score to 1-5 range
-    final_score = int(max(1, min(5, round(score))))
-    
-    # Simple rule-based reasoning
-    reasoning = "리뷰 분석 결과: "
-    if "階段" in text_content or "狭い" in text_content:
-        reasoning += "계단 혹은 좁은 공간으로 인해 유모차 진입이 다소 불편할 수 있습니다."
-    elif "ベビーカー" in text_content and "広い" in text_content:
-        reasoning += "공간이 넓고 유모차 진입이 수월하다는 긍정적인 평이 많습니다."
-    else:
-        reasoning += "보통 수준의 유모차 이용 환경입니다."
-        
-    # Standard translation of keywords for UI tags
-    tag_map = {
-        "ベビーカー": "유모차",
-        "広い": "넓은통로",
-        "離乳食": "이유식",
-        "スロープ": "경사로",
-        "エレベーター": "엘리베이터",
-        "段差": "턱있음",
-        "狭い": "좁음",
-        "階段": "계단있음"
-    }
-    korean_keywords = [tag_map[kw] for kw in matched_keywords if kw in tag_map]
-    if not korean_keywords:
-        korean_keywords = ["일반"]
-
-    # Rule-based amenities
-    has_ramp = "スロープ" in text_content or "エレベーター" in text_content or "elevator" in text_content or "slope" in text_content
-    doorway_width = "narrow" if ("狭い" in text_content) else "wide" if ("広い" in text_content) else "medium"
-    has_baby_chair = "離乳食" in text_content or "chair" in text_content or "椅" in text_content
-    has_stroller_parking = "ベビーカー" in text_content and ("置" in text_content or "パーキング" in text_content)
-    
-    return {
-        "stroller_score": final_score,
-        "reasoning": reasoning,
-        "review_keywords": korean_keywords,
-        "has_ramp": has_ramp,
-        "doorway_width": doorway_width,
-        "has_baby_chair": has_baby_chair,
-        "has_stroller_parking": has_stroller_parking
-    }
+    load_dotenv()
 
 def fetch_from_google_places_api(api_key: str) -> tuple:
     """
     Fetch places and baby stations from Google Places API near Toyocho Station.
     """
+    import requests
+
     print(f"Connecting to Google Places API... Target Center: ({TOYOCHO_LAT}, {TOYOCHO_LNG}) Radius: {RADIUS}m")
     
     places_found = []
@@ -362,7 +259,8 @@ def fetch_from_google_places_api(api_key: str) -> tuple:
                     "google_rating": details.get("rating", 3.5),
                     "reviews": reviews_list,
                     "access_policy": "customer_only" if app_category in ["restaurant", "cafe"] else "public_free",
-                    "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다." if app_category in ["restaurant", "cafe"] else "누구나 자유롭게 이용할 수 있습니다."
+                    "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다." if app_category in ["restaurant", "cafe"] else "누구나 자유롭게 이용할 수 있습니다.",
+                    "child_summary": ""
                 })
         except Exception as e:
             print(f"Error fetching type {api_type}: {e}")
@@ -443,12 +341,17 @@ def fetch_from_google_places_api(api_key: str) -> tuple:
         
     return places_found, baby_stations_found
 
-def main():
+def main(argv=None):
+    args = parse_args(argv)
+    load_environment()
+
     places_api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     
     use_mock = False
-    if not places_api_key or places_api_key in ["your_google_places_api_key_here", ""]:
+    if not is_configured_api_key(places_api_key):
+        if args.live:
+            raise RuntimeError("--live requires GOOGLE_PLACES_API_KEY; mock fallback is disabled in live mode.")
         print("GOOGLE_PLACES_API_KEY is not configured in .env. Running in Offline Mock mode.")
         use_mock = True
         
@@ -484,7 +387,8 @@ def main():
             "has_baby_chair": analysis["has_baby_chair"],
             "has_stroller_parking": analysis["has_stroller_parking"],
             "access_policy": p.get("access_policy", "public_free"),
-            "access_note": p.get("access_note", "자유롭게 출입할 수 있습니다.")
+            "access_note": p.get("access_note", "자유롭게 출입할 수 있습니다."),
+            "child_summary": p.get("child_summary") or analysis.get("child_summary", "")
         })
         
     # Process baby stations
@@ -529,7 +433,8 @@ def main():
                     "has_baby_chair": p["has_baby_chair"],
                     "has_stroller_parking": p["has_stroller_parking"],
                     "access_policy": p["access_policy"],
-                    "access_note": p["access_note"]
+                    "access_note": p["access_note"],
+                    "child_summary": p["child_summary"]
                 }
             } for p in processed_places
         ]
@@ -581,6 +486,10 @@ def main():
         
     # 4. Import to SQLite DB (asobi.db)
     print("Connecting to backend database for import...")
+    from sqlalchemy.orm import Session
+
+    from app.database import engine, init_db, BabyStation, StrollerFriendlyPlace, IS_SQLITE
+
     db = Session(bind=engine)
     try:
         # Reinitialize schemas
@@ -606,6 +515,7 @@ def main():
                 doorway_width=p["doorway_width"],
                 has_baby_chair=p["has_baby_chair"],
                 has_stroller_parking=p["has_stroller_parking"],
+                child_summary=p["child_summary"],
                 additional_info={
                     "access_policy": p["access_policy"],
                     "access_note": p["access_note"]

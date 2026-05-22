@@ -169,7 +169,8 @@ def get_places(
             "has_ramp": p.has_ramp,
             "doorway_width": p.doorway_width,
             "has_baby_chair": p.has_baby_chair,
-            "has_stroller_parking": p.has_stroller_parking
+            "has_stroller_parking": p.has_stroller_parking,
+            "child_summary": getattr(p, "child_summary", "")
         } for p in places
     ]
 

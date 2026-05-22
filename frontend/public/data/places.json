@@ -29,7 +29,8 @@
         "has_baby_chair": true,
         "has_stroller_parking": false,
         "access_policy": "customer_only",
-        "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다."
+        "access_note": "레스토랑 주문 이용 고객에 한하여 내부 편의 시설을 제공합니다.",
+        "child_summary": "경사로와 아기의자가 갖춰져 있고 이유식 메뉴도 있어, 유모차 가족이 편하게 식사할 수 있어요."
       }
     },
     {
@@ -57,7 +58,8 @@
         "has_baby_chair": false,
         "has_stroller_parking": true,
         "access_policy": "customer_only",
-        "access_note": "음료 주문 시 매장 내 시설 이용이 가능합니다."
+        "access_note": "음료 주문 시 매장 내 시설 이용이 가능합니다.",
+        "child_summary": "유모차 보관 구역이 있어서 유모차를 동반하고도 편안하게 커피 한 잔 마시며 쉬어갈 수 있는 카페예요."
       }
     },
     {
@@ -87,7 +89,8 @@
         "has_baby_chair": false,
         "has_stroller_parking": false,
         "access_policy": "public_free",
-        "access_note": "언제나 자유롭게 입장 및 산책이 가능합니다."
+        "access_note": "언제나 자유롭게 입장 및 산책이 가능합니다.",
+        "child_summary": "경사로가 마련된 넓은 공원으로 유모차 산책에 최적화되어 있으나, 일부 노면 턱이 있으니 유의하세요."
       }
     },
     {
@@ -117,7 +120,8 @@
         "has_baby_chair": false,
         "has_stroller_parking": false,
         "access_policy": "public_free",
-        "access_note": "빌딩 내 상업 시설 및 로비는 자유롭게 이용 가능합니다."
+        "access_note": "빌딩 내 상업 시설 및 로비는 자유롭게 이용 가능합니다.",
+        "child_summary": "경사로 진입 및 엘리베이터 이동이 편리하여 유모차로 다양한 상업 시설을 쾌적하게 둘러볼 수 있어요."
       }
     },
     {
@@ -146,7 +150,8 @@
         "has_baby_chair": false,
         "has_stroller_parking": true,
         "access_policy": "customer_only",
-        "access_note": "테이크아웃 또는 소규모 좌석 주문 시 이용할 수 있습니다."
+        "access_note": "테이크아웃 또는 소규모 좌석 주문 시 이용할 수 있습니다.",
+        "child_summary": "유모차 주차가 가능하나 매장 내부 공간이 협소하고 진입 시 약간의 턱이 있어 주의가 필요해요."
       }
     },
     {
@@ -175,7 +180,8 @@
         "has_baby_chair": false,
         "has_stroller_parking": false,
         "access_policy": "public_free",
-        "access_note": "마트 영업시간 동안 무료로 출입 및 기저귀 교환실 이용이 가능합니다."
+        "access_note": "마트 영업시간 동안 무료로 출입 및 기저귀 교환실 이용이 가능합니다.",
+        "child_summary": "마트 내 엘리베이터와 넓은 동선이 확보되어 있고, 2층에 아기 정거장 수유실이 있어 안심하고 장을 볼 수 있어요."
       }
     }
   ]

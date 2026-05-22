@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-page-custom-font */
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
@@ -27,7 +28,7 @@ export default function RootLayout({
       </head>
       <body className={`${plusJakartaSans.variable} font-sans bg-background text-on-background min-h-screen flex flex-col md:flex-row overflow-hidden`}>
         <SideNavBar />
-        <main className="ml-0 md:ml-64 flex-1 h-screen flex flex-col relative w-full overflow-y-auto md:overflow-hidden hide-scrollbar">
+        <main className="ml-0 md:ml-56 flex-1 h-screen flex flex-col relative w-full overflow-y-auto md:overflow-hidden hide-scrollbar">
           <TopNavBar />
           {children}
         </main>

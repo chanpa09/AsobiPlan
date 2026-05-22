@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import Map from "./Map";
+import { buildGoogleMapsUrl, filterSpots, type Spot } from "@/lib/spots";
 
 vi.mock("leaflet", () => ({
   default: {
@@ -10,9 +11,7 @@ vi.mock("leaflet", () => ({
 }));
 
 vi.mock("react-leaflet", () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="map-container">{children}</div>
-  ),
+  MapContainer: ({ children }: { children: React.ReactNode }) => <div data-testid="map-container">{children}</div>,
   Marker: ({ children }: { children?: React.ReactNode }) => <div data-testid="map-marker">{children}</div>,
   Popup: ({ children }: { children: React.ReactNode }) => <div data-testid="map-popup">{children}</div>,
   TileLayer: () => null,
@@ -23,108 +22,84 @@ vi.mock("react-leaflet", () => ({
   useMapEvents: vi.fn(),
 }));
 
+const spot: Spot = {
+  id: "place-1",
+  source: "place",
+  name: "로얄 호스트 토요초점",
+  category: "restaurant",
+  address: "도쿄도 고토구 토요 4-1-1",
+  latitude: 35.6706,
+  longitude: 139.8165,
+  google_rating: 4.0,
+  stroller_score: 5,
+  reasoning: "공간이 넓고 유모차 진입이 수월합니다.",
+  review_keywords: ["유모차", "경사로"],
+  access_policy: "customer_only",
+  access_note: "매장 이용 시 제공됩니다.",
+  child_summary: "경사로가 있어 유모차로 방문하기 좋습니다.",
+  amenities: {
+    nursing_room: false,
+    diaper_table: false,
+    hot_water: false,
+    ramp: true,
+    baby_chair: true,
+    stroller_parking: false,
+    wide_doorway: false,
+  },
+};
+
+describe("spot utilities", () => {
+  it("builds a walking Google Maps route URL", () => {
+    const url = buildGoogleMapsUrl([35.1, 139.1], [35.2, 139.2]);
+
+    expect(url).toContain("https://www.google.com/maps/dir/");
+    expect(url).toContain("origin=35.1%2C139.1");
+    expect(url).toContain("destination=35.2%2C139.2");
+    expect(url).toContain("travelmode=walking");
+  });
+
+  it("filters spots by search, category, and amenities", () => {
+    const result = filterSpots([spot], [35.6706, 139.8165], "호스트", {
+      minScore: 4,
+      category: "restaurant",
+      ramp: true,
+      nursingRoom: false,
+      diaperTable: false,
+      hotWater: false,
+      babyChair: true,
+      freeOnly: false,
+    });
+
+    expect(result).toEqual([spot]);
+  });
+});
+
 describe("Map", () => {
-  const registerServiceWorker = vi.fn(() =>
-    Promise.resolve({
-      scope: "/",
-      update: vi.fn(() => Promise.resolve()),
-    })
-  );
+  afterEach(() => cleanup());
 
-  const stationCollection = {
-    type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [139.8174, 35.6728] },
-        properties: {
-          id: 1,
-          name: "고토구청 본청사",
-          category: "public_facility",
-          address: "출발 주소",
-          has_nursing_room: true,
-          has_diaper_table: true,
-          has_hot_water: false,
-          open_hours: "09:00-18:00",
-          access_policy: "public_free",
-          access_note: "구매 없이 이용 가능한 편의공간입니다.",
-        },
-      },
-    ],
-  };
-
-  const placeCollection = {
-    type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [139.8302, 35.6701] },
-        properties: {
-          id: 10,
-          name: "도착 카페",
-          category: "cafe",
-          address: "도착 주소",
-          google_rating: 4.2,
-          stroller_score: 4,
-          reasoning: "넓은 입구",
-          review_keywords: ["유모차"],
-          has_ramp: true,
-          doorway_width: "wide",
-          has_baby_chair: true,
-          has_stroller_parking: false,
-          access_policy: "customer_only",
-          access_note: "매장 이용 시 제공됩니다.",
-        },
-      },
-    ],
-  };
-
-  beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/data/baby-stations.json")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(stationCollection),
-          });
-        }
-        if (url.includes("/data/places.json")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve(placeCollection),
-          });
-        }
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve([]),
-        });
-      })
+  it("renders markers and popup actions from provided spots", () => {
+    render(
+      <Map
+        center={[35.6706, 139.8165]}
+        spots={[spot]}
+        selectedSpotId={null}
+        currentLocation={null}
+        routeStart={null}
+        routeEnd={null}
+        onCenterChange={vi.fn()}
+        onSpotSelect={vi.fn()}
+        onRouteStartChange={vi.fn()}
+        onRouteEndChange={vi.fn()}
+      />
     );
 
-    Object.defineProperty(navigator, "serviceWorker", {
-      configurable: true,
-      value: {
-        register: registerServiceWorker,
-      },
-    });
-  });
-
-  afterEach(() => {
-    cleanup();
-    registerServiceWorker.mockClear();
-    vi.unstubAllGlobals();
-  });
-
-  it("renders MapContainer and loads static data", async () => {
-    render(<Map />);
-
     expect(screen.getByTestId("map-container")).toBeInTheDocument();
-    
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/data/baby-stations.json"));
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/data/places.json"));
-    });
+    expect(screen.getByText("로얄 호스트 토요초점")).toBeInTheDocument();
+    expect(screen.getByText("Google 4.0")).toBeInTheDocument();
+    expect(screen.getByText("AI 이동 점수 5/5")).toBeInTheDocument();
+    expect(screen.getByText("이동 편의 좋음")).toBeInTheDocument();
+    expect(screen.queryByText("유모차 5/5")).not.toBeInTheDocument();
+    expect(screen.getByText("출발지로 설정")).toBeInTheDocument();
+    expect(screen.getByText("도착지로 설정")).toBeInTheDocument();
   });
 });

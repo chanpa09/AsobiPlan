@@ -210,3 +210,42 @@
   animation: fadeIn 0.2s ease-out forwards;
 }
 
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Category Gradient Backgrounds */
+.bg-grad-park {
+  background: linear-gradient(135deg, #a7f3d0 0%, #0d503f 100%);
+}
+.bg-grad-dining {
+  background: linear-gradient(135deg, #fcd664 0%, #745c00 100%);
+}
+.bg-grad-shopping {
+  background: linear-gradient(135deg, #ffdad9 0%, #944748 100%);
+}
+.bg-grad-facility {
+  background: linear-gradient(135deg, #b1efd8 0%, #115342 100%);
+}
+
+/* Hover Lift Effect Transition */
+.card-hover-lift {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+.card-hover-lift:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 24px -10px rgba(148, 71, 72, 0.3);
+}
+
+

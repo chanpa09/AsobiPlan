@@ -63,6 +63,7 @@ class StrollerFriendlyPlace(Base):
     stroller_score = Column(Integer, default=0) # 0 to 5 rating
     reasoning = Column(String, nullable=True) # AI analysis reasoning
     review_keywords = Column(JSON, nullable=True) # e.g. ["유모차", "이유식", "넓음"]
+    child_summary = Column(String, nullable=True)
     
     # Detailed amenities
     has_ramp = Column(Boolean, default=False)

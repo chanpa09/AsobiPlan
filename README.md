@@ -1,122 +1,122 @@
 # AsobiPlan
 
-AsobiPlan은 도쿄 고토구 주변에서 유모차 이동을 고려해 장소를 찾고, 선택한 출발지와 도착지를 Google Maps 길찾기로 여는 정적 웹 앱입니다. 수유실과 기저귀 교환대는 독립 장소가 아니라 **매장, 몰, 역, 공공시설 안에 있는 편의시설**로 표시합니다.
+AsobiPlan은 도쿄 고토구 주변에서 유모차 이동을 고려해 장소를 찾고, 선택한 출발지와 도착지를 Google Maps 길찾기로 연결하는 정적 웹 앱 및 데이터 수집 백엔드 프로젝트입니다. 수유실과 기저귀 교환대는 독립 장소가 아니라 **매장, 몰, 역, 공공시설 안에 있는 편의시설**로 표시합니다.
 
-현재 기본 배포 목표는 **무료 GitHub Pages 배포**입니다.
+---
 
-- 프론트엔드: Next.js static export → GitHub Pages
-- 장소 데이터: `frontend/public/data/*.json` 정적 GeoJSON
-- 편의시설 표시: 수유실, 기저귀 교환대, 온수, 아기의자, 경사로
-- 이용조건 표시: 무료 개방, 매장 이용 필요, 입장료 필요, 직원 문의, 확인 필요
-- 길찾기: Google Maps 앱/웹 딥링크
-- 서버/DB/라우팅 엔진: MVP 배포에는 필요 없음
-
-## 무료 배포 구조
+## 🏗️ 전체 구조
 
 ```text
-GitHub Pages
-  └─ 정적 Next.js 앱
-       ├─ /data/baby-stations.json
-       ├─ /data/places.json
-       └─ Google Maps 길찾기 링크
+AsobiPlan
+ ├── frontend (Next.js 정적 앱)
+ │    ├── public/data/ (정적 GeoJSON 데이터)
+ │    └── src/ (React-Leaflet 지도 및 UI 컴포넌트)
+ └── backend (FastAPI 서버 및 데이터 수집/분석 파이프라인)
+      ├── app/ (API 라우터 및 데이터베이스 모델)
+      ├── scripts/ (Google Places API 및 Gemini AI 분석 스크립트)
+      └── tests/ (백엔드 테스트)
 ```
 
-OpenRouteService, Cloudflare Worker, OSRM은 현재 기본 길찾기 흐름에 필요하지 않습니다. 사용자는 앱에서 모든 장소를 출발지 또는 도착지로 선택한 뒤 **Google Maps에서 길찾기** 버튼을 눌러 지도 앱으로 이동합니다.
+---
 
-## 현재 위치
+## ✨ 주요 기능
 
-앱은 브라우저의 위치 권한을 사용해 현재 위치를 찾을 수 있습니다.
+### 1. 프론트엔드 (Frontend)
+- **지도 탐색**: `React-Leaflet`을 사용해 고토구 주변의 편의시설 및 유모차 친화적 매장 위치를 표시합니다.
+- **상세 필터링**: 수유실, 기저귀 교환 공간, 온수 제공 여부, 경사로 설치 여부, 아기의자 구비 여부 및 무료 개방 여부 등으로 장소를 필터링할 수 있습니다.
+- **AI 이동 점수 필터**: Gemini AI가 분석한 유모차 이동 친화도 점수(1~5점)를 기준으로 탐색할 수 있습니다.
+- **길찾기 연동**: 지도상에서 출발지와 도착지(혹은 현재 위치를 출발지로 설정)를 선택한 뒤 Google Maps 앱/웹 딥링크로 연동하여 도보 길찾기 경로를 제공합니다.
 
-- `현재 위치 찾기`: 현재 위치를 지도 중심으로 이동하고 주변 장소를 다시 보여줍니다.
-- `현재 위치를 출발지로`: 현재 위치를 Google Maps 길찾기의 출발지로 설정합니다.
+### 2. 백엔드 (Backend)
+- **FastAPI API 서버**: 데이터베이스에 저장된 유모차 친화 장소 목록을 반경 검색 및 필터와 함께 반환합니다.
+- **Gemini AI 리뷰 분석 파이프라인**: `gemini-2.5-flash` 모델을 사용하여 수집된 매장 리뷰 텍스트를 기반으로 유모차 친화도 점수(`stroller_score`), 태그(키워드), 편의시설 여부 및 한국어 요약(`child_summary`, `reasoning`)을 자동으로 생성합니다.
+- **데이터 수집 및 가공 스크립트**:
+  - `collect_places.py`: Google Places API 및 Gemini API를 연동하여 실제 데이터를 수집합니다.
+  - `import_akachan_flat.py`: 도쿄도 '아카짱 플랫(赤ちゃん・ふらっと)' 수유 공간 원천 데이터를 DB로 임포트합니다.
+  - `keyword_analysis.py`: 리뷰 데이터를 분석해 점수와 키워드를 추출합니다.
 
-현재 위치는 AsobiPlan 서버로 저장하거나 전송하지 않고 브라우저 화면 상태에서만 사용합니다. 다만 `Google Maps에서 길찾기`를 누르면 Google Maps 길찾기 URL의 출발지 좌표로 전달됩니다. GitHub Pages는 HTTPS로 제공되므로 모바일 브라우저에서 위치 권한을 사용할 수 있습니다.
+---
 
-## 수유실과 이용조건 정의
+## 🚀 로컬 실행 가이드
 
-일본의 `赤ちゃんの駅` 또는 도쿄도의 `赤ちゃん・ふらっと`은 아기를 동반한 보호자가 수유, 기저귀 교환, 온수 사용 등을 할 수 있도록 안내되는 편의공간입니다. 앱에서는 이 용어를 그대로 노출하지 않고 `수유실·기저귀 교환 공간`으로 풀어 씁니다.
+### 1. 환경 설정
+루트 디렉터리의 `.env.example` 파일을 복사하여 `.env` 파일을 생성하고 필요한 API Key를 설정합니다.
 
-이용조건은 장소별로 다르게 표시합니다.
+```env
+# Google Places API Config
+GOOGLE_PLACES_API_KEY=your_google_places_api_key_here
 
-- `무료 개방`: 구매나 입장료 없이 이용 가능한 공공/공용 편의공간
-- `매장 이용 필요`: 주문, 식사, 쇼핑 등 매장 이용 고객 기준으로 제공되는 편의시설
-- `입장료 필요`: 유료 시설 내부에 있어 입장료나 이용권이 필요한 경우
-- `직원 문의`: 직원 안내나 확인 후 이용해야 하는 경우
-- `확인 필요`: 조건을 확실히 알 수 없어 무료라고 단정하지 않는 경우
-
-## MVP 길찾기
-
-앱은 Google Maps URL을 다음 형태로 생성합니다.
-
-```text
-https://www.google.com/maps/dir/?api=1&origin=<lat>,<lon>&destination=<lat>,<lon>&travelmode=walking
+# Gemini API Config (AI 리뷰 분석용)
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-사용 흐름:
+### 2. 백엔드 실행 & 데이터 수집 (Backend)
+```bash
+cd backend
 
-1. 장소 카드에서 `출발`을 선택합니다.
-2. 또는 `현재 위치를 출발지로`를 눌러 내 위치를 출발지로 설정합니다.
-3. 같은 장소 목록에서 `도착`을 선택합니다.
-4. 상단 패널의 `Google Maps에서 길찾기`를 누릅니다.
+# 가상환경 구축 및 활성화
+python -m venv venv
+# Windows의 경우
+venv\Scripts\activate
+# macOS/Linux의 경우
+# source venv/bin/activate
 
-Google Maps 도보 길찾기는 계단 회피를 강제하는 옵션을 제공하지 않습니다. 따라서 앱은 장소 탐색과 출발/도착 선택에 집중하고, 실시간 내비게이션은 Google Maps에 맡깁니다.
+# 의존성 설치
+pip install -r requirements.txt
 
-## 로컬 실행
+# 데이터베이스 초기화 및 기본 모의(Mock) 데이터 로드
+python scripts/import_data.py
 
+# (선택) Google Places API & Gemini API 기반 라이브 데이터 수집 실행
+python scripts/collect_places.py --live
+
+# API 서버 구동
+uvicorn app.main:app --reload
+```
+- 백엔드 서버는 기본적으로 `http://localhost:8000`에서 실행됩니다.
+- API 문서(Swagger UI)는 `http://localhost:8000/docs`에서 확인할 수 있습니다.
+
+### 3. 프론트엔드 실행 (Frontend)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+- 프론트엔드 개발 서버는 `http://localhost:3000`에서 실행됩니다.
 
-기본 주소는 `http://localhost:3000`입니다.
+---
 
-## GitHub Pages 배포
-
-이 저장소에는 GitHub Pages용 workflow가 포함되어 있습니다.
-
-- `.github/workflows/pages.yml`
-- `frontend/next.config.ts`의 `output: "export"`
-- GitHub Pages용 `basePath=/AsobiPlan`
-
-설정 순서:
-
-1. GitHub 저장소 `Settings > Pages`에서 Source를 `GitHub Actions`로 설정합니다.
-2. `main` 브랜치에 push하면 GitHub Actions가 `frontend/out`을 GitHub Pages에 배포합니다.
-
-배포 주소는 보통 다음 형태입니다.
-
-```text
-https://chanpa09.github.io/AsobiPlan/
-```
-
-## 정적 데이터
-
-프론트엔드는 서버 API 대신 아래 파일을 직접 읽고, 화면에서는 하나의 장소 목록으로 합쳐 표시합니다.
+## 📦 정적 데이터 및 배포
+현재 AsobiPlan의 기본 배포 목표는 **무료 GitHub Pages 배포**입니다. 프론트엔드는 빌드 시 서버 API 호출 없이 아래 정적 GeoJSON 데이터를 직접 읽어 동작합니다.
 
 - `frontend/public/data/baby-stations.json`
 - `frontend/public/data/places.json`
 - `frontend/public/data/avoid-areas.json`
 
-반경 검색과 필터링은 브라우저에서 Haversine 거리 계산과 배열 필터링으로 처리합니다. `baby-stations.json`의 항목도 독립 시설 목록이 아니라 수유실·기저귀 교환대가 있는 장소로 변환되어 표시됩니다.
+### GitHub Pages 배포 설정
+1. GitHub 저장소 `Settings > Pages`에서 Source를 `GitHub Actions`로 설정합니다.
+2. `main` 브랜치에 push하면 `.github/workflows/pages.yml` 액션이 동작하여 `frontend/out` 결과물을 배포합니다.
+3. 배포 주소 형식: `https://<username>.github.io/AsobiPlan/`
 
-## 검증
+---
 
+## 🧪 테스트 및 검증
+
+### 백엔드 테스트
 ```bash
-cd frontend
-npm test
-npm run lint
-npm run build
-npm run test:e2e
+cd backend
+pytest
 ```
 
-`npm run build`는 정적 export 산출물인 `frontend/out`을 생성합니다.
-
-## 서버형 실험 구성
-
-아래 구성은 현재 GitHub Pages MVP에는 필요하지 않지만, 나중에 앱 내부 경로 표시를 다시 실험할 때 사용할 수 있습니다.
-
-- `backend`: FastAPI 기반 API 서버
-- `osrm`: 유모차 이동에 맞춘 OSRM 라우팅 프로파일과 Docker 설정
-- `workers/route-proxy`: OpenRouteService 호출용 Cloudflare Worker 예제
-- `docker-compose.yml`: PostgreSQL/PostGIS와 OSRM 실행 환경
+### 프론트엔드 테스트
+```bash
+cd frontend
+# 유닛 테스트
+npm test
+# 린트 검사
+npm run lint
+# E2E 테스트 (Playwright)
+npm run test:e2e
+# 정적 빌드 검증
+npm run build
+```
