@@ -16,7 +16,9 @@
         "has_ramp": false,
         "doorway_width": "wide",
         "has_baby_chair": true,
-        "has_stroller_parking": false
+        "has_stroller_parking": false,
+        "access_policy": "customer_only",
+        "access_note": "매장 내 편의시설은 식사 또는 매장 이용 시 제공되는 것으로 표시합니다."
       }
     },
     {
@@ -34,7 +36,9 @@
         "has_ramp": true,
         "doorway_width": "wide",
         "has_baby_chair": false,
-        "has_stroller_parking": false
+        "has_stroller_parking": false,
+        "access_policy": "public_free",
+        "access_note": "공원은 무료 개방 공간으로 표시합니다. 시설별 운영시간은 현장에서 확인해 주세요."
       }
     },
     {
@@ -52,7 +56,9 @@
         "has_ramp": false,
         "doorway_width": "narrow",
         "has_baby_chair": false,
-        "has_stroller_parking": false
+        "has_stroller_parking": false,
+        "access_policy": "customer_only",
+        "access_note": "매장 좌석과 편의시설은 주문 후 이용 가능한 것으로 표시합니다."
       }
     },
     {
@@ -70,7 +76,9 @@
         "has_ramp": false,
         "doorway_width": "narrow",
         "has_baby_chair": false,
-        "has_stroller_parking": false
+        "has_stroller_parking": false,
+        "access_policy": "customer_only",
+        "access_note": "매장 이용 고객 기준으로 표시합니다. 유모차 방문은 추천하지 않습니다."
       }
     }
   ]

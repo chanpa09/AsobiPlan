@@ -1,66 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { 
+import {
   Baby,
-  RefreshCw, Star, Info, Sun, Moon, SlidersHorizontal, 
-  ChevronDown, ChevronUp 
+  ChevronDown,
+  ChevronUp,
+  Info,
+  Moon,
+  RefreshCw,
+  SlidersHorizontal,
+  Star,
+  Sun,
 } from "lucide-react";
 
-// Fix Leaflet marker icon issue by using inline SVG markers (DivIcon)
-const createMarkerIcon = (type: "start" | "end" | "station" | "place") => {
-  let color = "#4f46e5"; // Indigo
-  let iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+type MarkerType = "start" | "end" | "care" | "place";
+type SpotSource = "care" | "place";
+type SpotCategory = "public_facility" | "mall" | "station" | "restaurant" | "cafe" | "park";
+type AccessPolicy = "public_free" | "customer_only" | "paid_entry" | "ask_staff" | "unknown";
 
-  if (type === "start") {
-    color = "#10b981"; // Emerald Green
-    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
-  } else if (type === "end") {
-    color = "#ef4444"; // Red
-    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
-  } else if (type === "station") {
-    color = "#ec4899"; // Pink
-    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h.01M15 12h.01M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5M19 10A7 7 0 0 0 5 10v1a7 7 0 0 0 14 0Z"/></svg>`;
-  } else if (type === "place") {
-    color = "#f59e0b"; // Amber/Orange
-    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
-  }
-
-  const html = `
-    <div style="
-      background-color: ${color}; 
-      width: 32px; 
-      height: 32px; 
-      border-radius: 50%; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      color: white; 
-      border: 3px solid white; 
-      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-      font-weight: bold;
-      font-size: 11px;
-    ">
-      ${iconSvg}
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-leaflet-icon",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16],
-  });
-};
-
-// Types
 interface BabyStation {
   id: number;
   name: string;
+  category?: SpotCategory;
   address: string;
   latitude: number;
   longitude: number;
@@ -68,12 +32,14 @@ interface BabyStation {
   has_diaper_table: boolean;
   has_hot_water: boolean;
   open_hours: string;
+  access_policy?: AccessPolicy;
+  access_note?: string;
 }
 
 interface Place {
   id: number;
   name: string;
-  category: string;
+  category: SpotCategory;
   address: string;
   latitude: number;
   longitude: number;
@@ -85,6 +51,12 @@ interface Place {
   doorway_width: string;
   has_baby_chair: boolean;
   has_stroller_parking: boolean;
+  has_nursing_room?: boolean;
+  has_diaper_table?: boolean;
+  has_hot_water?: boolean;
+  open_hours?: string;
+  access_policy?: AccessPolicy;
+  access_note?: string;
 }
 
 type PointFeature<T> = {
@@ -101,9 +73,97 @@ type FeatureCollection<T> = {
   features: PointFeature<T>[];
 };
 
+type Spot = {
+  id: string;
+  source: SpotSource;
+  name: string;
+  category: SpotCategory;
+  address: string;
+  latitude: number;
+  longitude: number;
+  stroller_score: number;
+  reasoning: string;
+  review_keywords: string[];
+  open_hours?: string;
+  access_policy: AccessPolicy;
+  access_note: string;
+  amenities: {
+    nursing_room: boolean;
+    diaper_table: boolean;
+    hot_water: boolean;
+    ramp: boolean;
+    baby_chair: boolean;
+    stroller_parking: boolean;
+    wide_doorway: boolean;
+  };
+};
+
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
+const CATEGORY_LABELS: Record<SpotCategory, string> = {
+  public_facility: "공공시설",
+  mall: "상업시설",
+  station: "역",
+  restaurant: "음식점",
+  cafe: "카페",
+  park: "공원",
+};
+
+const ACCESS_POLICY_LABELS: Record<AccessPolicy, string> = {
+  public_free: "무료 개방",
+  customer_only: "매장 이용 필요",
+  paid_entry: "입장료 필요",
+  ask_staff: "직원 문의",
+  unknown: "확인 필요",
+};
+
 const toDataUrl = (path: string) => `${BASE_PATH}${path}`;
+
+const createMarkerIcon = (type: MarkerType) => {
+  let color = "#4f46e5";
+  let iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+
+  if (type === "start") {
+    color = "#10b981";
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+  } else if (type === "end") {
+    color = "#ef4444";
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+  } else if (type === "care") {
+    color = "#ec4899";
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h.01M15 12h.01M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5M19 10A7 7 0 0 0 5 10v1a7 7 0 0 0 14 0Z"/></svg>`;
+  } else if (type === "place") {
+    color = "#f59e0b";
+    iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+  }
+
+  const html = `
+    <div style="
+      background-color: ${color};
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      border: 3px solid white;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      font-weight: bold;
+      font-size: 11px;
+    ">
+      ${iconSvg}
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "custom-leaflet-icon",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16],
+  });
+};
 
 const featureToRecord = <T extends { latitude: number; longitude: number }>(feature: PointFeature<T>): T => {
   const [longitude, latitude] = feature.geometry.coordinates;
@@ -135,6 +195,56 @@ const buildGoogleMapsUrl = (origin: [number, number], destination: [number, numb
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 };
 
+const toCareSpot = (station: BabyStation): Spot => ({
+  id: `care-${station.id}`,
+  source: "care",
+  name: station.name,
+  category: station.category || "public_facility",
+  address: station.address,
+  latitude: station.latitude,
+  longitude: station.longitude,
+  stroller_score: 5,
+  reasoning: "수유실·기저귀 교환 등 아이 돌봄 편의공간입니다.",
+  review_keywords: [],
+  open_hours: station.open_hours,
+  access_policy: station.access_policy || "unknown",
+  access_note: station.access_note || "이용 조건을 현장에서 확인해 주세요.",
+  amenities: {
+    nursing_room: station.has_nursing_room,
+    diaper_table: station.has_diaper_table,
+    hot_water: station.has_hot_water,
+    ramp: false,
+    baby_chair: false,
+    stroller_parking: false,
+    wide_doorway: true,
+  },
+});
+
+const toPlaceSpot = (place: Place): Spot => ({
+  id: `place-${place.id}`,
+  source: "place",
+  name: place.name,
+  category: place.category,
+  address: place.address,
+  latitude: place.latitude,
+  longitude: place.longitude,
+  stroller_score: place.stroller_score,
+  reasoning: place.reasoning,
+  review_keywords: place.review_keywords,
+  open_hours: place.open_hours,
+  access_policy: place.access_policy || "unknown",
+  access_note: place.access_note || "이용 조건을 현장에서 확인해 주세요.",
+  amenities: {
+    nursing_room: Boolean(place.has_nursing_room),
+    diaper_table: Boolean(place.has_diaper_table),
+    hot_water: Boolean(place.has_hot_water),
+    ramp: place.has_ramp,
+    baby_chair: place.has_baby_chair,
+    stroller_parking: place.has_stroller_parking,
+    wide_doorway: place.doorway_width === "wide",
+  },
+});
+
 interface MapControllerProps {
   center: [number, number];
 }
@@ -154,7 +264,6 @@ interface MapEventsProps {
 function MapEvents({ onContextMenu }: MapEventsProps) {
   useMapEvents({
     contextmenu(e) {
-      // Right click to set end
       onContextMenu([e.latlng.lat, e.latlng.lng]);
     },
   });
@@ -162,45 +271,29 @@ function MapEvents({ onContextMenu }: MapEventsProps) {
 }
 
 export default function Map() {
-  const [center, setCenter] = useState<[number, number]>([35.6715, 139.8210]); // Toyocho/Minamisuna default
-  const [babyStations, setBabyStations] = useState<BabyStation[]>([]);
-  const [places, setPlaces] = useState<Place[]>([]);
-  const [allBabyStations, setAllBabyStations] = useState<BabyStation[]>([]);
-  const [allPlaces, setAllPlaces] = useState<Place[]>([]);
-  
+  const [center, setCenter] = useState<[number, number]>([35.6715, 139.8210]);
+  const [allSpots, setAllSpots] = useState<Spot[]>([]);
+
   const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
   const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Premium UI & Mode state
   const [darkMode, setDarkMode] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Search Filter state
   const [filterMinScore, setFilterMinScore] = useState<number>(1);
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [filterRamp, setFilterRamp] = useState<boolean>(false);
-  const [filterDoorwayWidth, setFilterDoorwayWidth] = useState<string>("all");
-  const [filterBabyChair, setFilterBabyChair] = useState<boolean>(false);
-  const [filterStrollerParking, setFilterStrollerParking] = useState<boolean>(false);
-
-  // Baby station client-side Filter state
   const [filterNursingRoom, setFilterNursingRoom] = useState<boolean>(false);
   const [filterDiaperTable, setFilterDiaperTable] = useState<boolean>(false);
   const [filterHotWater, setFilterHotWater] = useState<boolean>(false);
+  const [filterBabyChair, setFilterBabyChair] = useState<boolean>(false);
+  const [filterFreeOnly, setFilterFreeOnly] = useState<boolean>(false);
 
-  // Highlight Synchronization state
-  const [highlightedPlaceId, setHighlightedPlaceId] = useState<number | null>(null);
-  const [highlightedStationId, setHighlightedStationId] = useState<number | null>(null);
-
-  // Refs for draggable markers
+  const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
   const startMarkerRef = useRef<L.Marker | null>(null);
   const endMarkerRef = useRef<L.Marker | null>(null);
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Refs dictionary for sidebar cards
-  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-
-  // Sync dark mode class
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add("dark");
@@ -211,7 +304,6 @@ export default function Map() {
     }
   }, [darkMode]);
 
-  // Register Service Worker for offline PWA capabilities
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       if (BASE_PATH) {
@@ -241,7 +333,6 @@ export default function Map() {
         .register("/sw.js")
         .then((reg) => {
           console.log("Service Worker registered successfully with scope:", reg.scope);
-          // Force update check to apply fixes immediately
           reg.update().catch((e) => console.warn("Failed to update SW:", e));
         })
         .catch((err) => {
@@ -264,8 +355,10 @@ export default function Map() {
 
         const stationsData = await stationsRes.json() as FeatureCollection<BabyStation>;
         const placesData = await placesRes.json() as FeatureCollection<Place>;
-        setAllBabyStations(stationsData.features.map(featureToRecord));
-        setAllPlaces(placesData.features.map(featureToRecord));
+        setAllSpots([
+          ...stationsData.features.map(featureToRecord).map(toCareSpot),
+          ...placesData.features.map(featureToRecord).map(toPlaceSpot),
+        ]);
       } catch (error) {
         console.error("Error loading static data:", error);
       } finally {
@@ -276,54 +369,32 @@ export default function Map() {
     loadStaticData();
   }, []);
 
-  // Filter bundled static data on the client for GitHub Pages deployment.
-  const fetchData = useCallback((lat: number, lon: number) => {
-    setLoading(true);
-    const nearbyStations = allBabyStations.filter((station) =>
-      haversineDistance(lat, lon, station.latitude, station.longitude) <= 800
-    );
-    const nearbyPlaces = allPlaces.filter((place) => {
-      if (haversineDistance(lat, lon, place.latitude, place.longitude) > 1200) return false;
-      if (place.stroller_score < filterMinScore) return false;
-      if (filterCategory && place.category !== filterCategory) return false;
-      if (filterRamp && !place.has_ramp) return false;
-      if (filterDoorwayWidth !== "all" && place.doorway_width !== filterDoorwayWidth) return false;
-      if (filterBabyChair && !place.has_baby_chair) return false;
-      if (filterStrollerParking && !place.has_stroller_parking) return false;
+  const spots = useMemo(() => {
+    return allSpots.filter((spot) => {
+      if (haversineDistance(center[0], center[1], spot.latitude, spot.longitude) > 1200) return false;
+      if (spot.stroller_score < filterMinScore) return false;
+      if (filterCategory && spot.category !== filterCategory) return false;
+      if (filterRamp && !spot.amenities.ramp) return false;
+      if (filterNursingRoom && !spot.amenities.nursing_room) return false;
+      if (filterDiaperTable && !spot.amenities.diaper_table) return false;
+      if (filterHotWater && !spot.amenities.hot_water) return false;
+      if (filterBabyChair && !spot.amenities.baby_chair) return false;
+      if (filterFreeOnly && spot.access_policy !== "public_free") return false;
       return true;
     });
-
-    setBabyStations(nearbyStations);
-    setPlaces(nearbyPlaces);
-    setLoading(false);
   }, [
-    allBabyStations,
-    allPlaces,
-    filterMinScore,
-    filterCategory,
-    filterRamp,
-    filterDoorwayWidth,
+    allSpots,
+    center,
     filterBabyChair,
-    filterStrollerParking,
+    filterCategory,
+    filterDiaperTable,
+    filterFreeOnly,
+    filterHotWater,
+    filterMinScore,
+    filterNursingRoom,
+    filterRamp,
   ]);
 
-  // Trigger data fetch on center or filters change
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchData(center[0], center[1]);
-  }, [center, fetchData]);
-
-  // Client-side filtering for Baby Stations
-  const filteredBabyStations = useMemo(() => {
-    return babyStations.filter((station) => {
-      if (filterNursingRoom && !station.has_nursing_room) return false;
-      if (filterDiaperTable && !station.has_diaper_table) return false;
-      if (filterHotWater && !station.has_hot_water) return false;
-      return true;
-    });
-  }, [babyStations, filterNursingRoom, filterDiaperTable, filterHotWater]);
-
-  // Clear current route
   const clearRoute = () => {
     setRouteStart(null);
     setRouteEnd(null);
@@ -331,7 +402,6 @@ export default function Map() {
 
   const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
 
-  // Handle draggable marker drag events
   const startEventHandlers = useMemo(
     () => ({
       dragend() {
@@ -358,9 +428,19 @@ export default function Map() {
     []
   );
 
+  const renderAmenityTags = (spot: Spot) => (
+    <>
+      {spot.amenities.nursing_room && <span className="tag nursing">수유실</span>}
+      {spot.amenities.diaper_table && <span className="tag diaper">기저귀 교환대</span>}
+      {spot.amenities.hot_water && <span className="tag water">온수</span>}
+      {spot.amenities.baby_chair && <span className="tag baby-chair">아기의자</span>}
+      {spot.amenities.ramp && <span className="tag ramp">경사로</span>}
+      {spot.amenities.wide_doorway && <span className="tag doorway">넓은 출입문</span>}
+    </>
+  );
+
   return (
     <div className="app-container">
-      {/* Sidebar Control Panel */}
       <div className="control-panel">
         <div className="panel-header">
           <div className="brand">
@@ -371,14 +451,14 @@ export default function Map() {
         </div>
 
         <div className="panel-section">
-          <h2>📍 출발지 & 도착지 설정</h2>
+          <h2>출발지 & 도착지 설정</h2>
           <div className="route-picker">
             <div className="picker-input">
               <span className="dot green"></span>
               <input
                 type="text"
                 readOnly
-                placeholder={routeStart ? `${routeStart[0].toFixed(4)}, ${routeStart[1].toFixed(4)}` : "지도 핀 클릭 또는 출발지 지정"}
+                placeholder={routeStart ? `${routeStart[0].toFixed(4)}, ${routeStart[1].toFixed(4)}` : "장소 카드에서 출발 선택"}
                 value={routeStart ? "출발지 지정 완료" : ""}
               />
               {routeStart && <button onClick={() => setRouteStart(null)}>초기화</button>}
@@ -388,7 +468,7 @@ export default function Map() {
               <input
                 type="text"
                 readOnly
-                placeholder={routeEnd ? `${routeEnd[0].toFixed(4)}, ${routeEnd[1].toFixed(4)}` : "지도를 우클릭하여 도착지 지정"}
+                placeholder={routeEnd ? `${routeEnd[0].toFixed(4)}, ${routeEnd[1].toFixed(4)}` : "장소 카드에서 도착 선택"}
                 value={routeEnd ? "도착지 지정 완료" : ""}
               />
               {routeEnd && <button onClick={() => setRouteEnd(null)}>초기화</button>}
@@ -413,8 +493,8 @@ export default function Map() {
             </div>
           )}
 
-          <button 
-            className="filters-toggle-btn" 
+          <button
+            className="filters-toggle-btn"
             onClick={() => setShowFilters(!showFilters)}
           >
             <SlidersHorizontal size={14} />
@@ -424,106 +504,62 @@ export default function Map() {
 
           {showFilters && (
             <div className="filters-panel">
-              <h3>유모차 친화도 및 편의시설</h3>
-              
+              <h3>장소 유형과 편의시설</h3>
+
               <div className="filter-slider-container">
                 <div className="filter-slider-header">
                   <span>최소 유모차 친화 점수</span>
                   <span>{filterMinScore}점 이상</span>
                 </div>
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="5" 
-                  value={filterMinScore} 
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={filterMinScore}
                   onChange={(e) => setFilterMinScore(Number(e.target.value))}
                   className="filter-slider"
                 />
               </div>
 
-              <div>
-                <select 
-                  value={filterCategory} 
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="">모든 카테고리</option>
-                  <option value="cafe">카페</option>
-                  <option value="restaurant">음식점</option>
-                  <option value="park">공원</option>
-                </select>
-              </div>
-
-              <div>
-                <select 
-                  value={filterDoorwayWidth} 
-                  onChange={(e) => setFilterDoorwayWidth(e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">모든 출입구 너비</option>
-                  <option value="wide">넓은 출입구 (유모차 용이)</option>
-                  <option value="medium">중간 출입구</option>
-                  <option value="narrow">좁은 출입구</option>
-                </select>
-              </div>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="filter-select"
+              >
+                <option value="">모든 장소 유형</option>
+                <option value="public_facility">공공시설</option>
+                <option value="mall">상업시설</option>
+                <option value="station">역</option>
+                <option value="cafe">카페</option>
+                <option value="restaurant">음식점</option>
+                <option value="park">공원</option>
+              </select>
 
               <div className="filters-grid">
                 <label className="filter-checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={filterRamp} 
-                    onChange={(e) => setFilterRamp(e.target.checked)}
-                  />
-                  경사로 보유
+                  <input type="checkbox" checked={filterNursingRoom} onChange={(e) => setFilterNursingRoom(e.target.checked)} />
+                  수유실 있음
                 </label>
-                
                 <label className="filter-checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={filterBabyChair} 
-                    onChange={(e) => setFilterBabyChair(e.target.checked)}
-                  />
-                  아기의자 보유
+                  <input type="checkbox" checked={filterDiaperTable} onChange={(e) => setFilterDiaperTable(e.target.checked)} />
+                  기저귀 교환대 있음
                 </label>
-
                 <label className="filter-checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={filterStrollerParking} 
-                    onChange={(e) => setFilterStrollerParking(e.target.checked)}
-                  />
-                  유모차 주차
+                  <input type="checkbox" checked={filterHotWater} onChange={(e) => setFilterHotWater(e.target.checked)} />
+                  온수 있음
                 </label>
-              </div>
-
-              <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "8px", marginTop: "4px" }}>
-                <h3 style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" }}>수유소(아기정거장) 필수 조건</h3>
-                <div className="filters-grid">
-                  <label className="filter-checkbox-label">
-                    <input 
-                      type="checkbox" 
-                      checked={filterNursingRoom} 
-                      onChange={(e) => setFilterNursingRoom(e.target.checked)}
-                    />
-                    수유실 보유
-                  </label>
-                  <label className="filter-checkbox-label">
-                    <input 
-                      type="checkbox" 
-                      checked={filterDiaperTable} 
-                      onChange={(e) => setFilterDiaperTable(e.target.checked)}
-                    />
-                    기저귀대 보유
-                  </label>
-                  <label className="filter-checkbox-label">
-                    <input 
-                      type="checkbox" 
-                      checked={filterHotWater} 
-                      onChange={(e) => setFilterHotWater(e.target.checked)}
-                    />
-                    온수 제공
-                  </label>
-                </div>
+                <label className="filter-checkbox-label">
+                  <input type="checkbox" checked={filterFreeOnly} onChange={(e) => setFilterFreeOnly(e.target.checked)} />
+                  무료 개방만
+                </label>
+                <label className="filter-checkbox-label">
+                  <input type="checkbox" checked={filterRamp} onChange={(e) => setFilterRamp(e.target.checked)} />
+                  경사로 있음
+                </label>
+                <label className="filter-checkbox-label">
+                  <input type="checkbox" checked={filterBabyChair} onChange={(e) => setFilterBabyChair(e.target.checked)} />
+                  아기의자 있음
+                </label>
               </div>
             </div>
           )}
@@ -540,106 +576,73 @@ export default function Map() {
           )}
         </div>
 
-        {/* Nearby Lists */}
         <div className="panel-section list-section">
-          <h2>🍼 주변 수유소 (아기 정거장) ({filteredBabyStations.length})</h2>
+          <h2>장소 목록 ({spots.length})</h2>
           <div className="scroll-list">
-            {filteredBabyStations.map((station) => (
-              <div 
-                key={station.id} 
-                ref={(el) => { itemRefs.current[`station-${station.id}`] = el; }}
-                className={`list-item station-item ${highlightedStationId === station.id ? "highlighted" : ""}`} 
+            {spots.map((spot) => (
+              <div
+                key={spot.id}
+                ref={(el) => { itemRefs.current[spot.id] = el; }}
+                className={`list-item ${highlightedSpotId === spot.id ? "highlighted" : ""}`}
                 onClick={() => {
-                  setCenter([station.latitude, station.longitude]);
-                  setHighlightedStationId(station.id);
-                  setHighlightedPlaceId(null);
+                  setCenter([spot.latitude, spot.longitude]);
+                  setHighlightedSpotId(spot.id);
                 }}
               >
                 <div className="item-header">
-                  <h3>{station.name}</h3>
+                  <div>
+                    <div className="item-meta-row">
+                      <span className="category-badge">{CATEGORY_LABELS[spot.category]}</span>
+                      <span className={`access-badge access-${spot.access_policy}`}>{ACCESS_POLICY_LABELS[spot.access_policy]}</span>
+                    </div>
+                    <h3>{spot.name}</h3>
+                  </div>
                   <div className="button-group">
-                    <button 
-                      className="set-route-btn start" 
-                      onClick={(e) => { e.stopPropagation(); setRouteStart([station.latitude, station.longitude]); }}
+                    <button
+                      className="set-route-btn start"
+                      onClick={(e) => { e.stopPropagation(); setRouteStart([spot.latitude, spot.longitude]); }}
                     >
                       출발
                     </button>
-                  </div>
-                </div>
-                <p className="item-address">{station.address}</p>
-                <div className="amenity-tags">
-                  {station.has_nursing_room && <span className="tag nursing">수유실</span>}
-                  {station.has_diaper_table && <span className="tag diaper">기저귀 교환대</span>}
-                  {station.has_hot_water && <span className="tag water">온수 제공</span>}
-                </div>
-              </div>
-            ))}
-            {filteredBabyStations.length === 0 && <p className="empty-text">주변에 알맞은 수유실 정보가 없습니다.</p>}
-          </div>
-        </div>
-
-        <div className="panel-section list-section mt-4">
-          <h2>☕ 유모차 친화 장소 ({places.length})</h2>
-          <div className="scroll-list">
-            {places.map((place) => (
-              <div 
-                key={place.id} 
-                ref={(el) => { itemRefs.current[`place-${place.id}`] = el; }}
-                className={`list-item place-item ${highlightedPlaceId === place.id ? "highlighted" : ""}`} 
-                onClick={() => {
-                  setCenter([place.latitude, place.longitude]);
-                  setHighlightedPlaceId(place.id);
-                  setHighlightedStationId(null);
-                }}
-              >
-                <div className="item-header">
-                  <h3>{place.name}</h3>
-                  <div className="button-group">
-                    <button 
-                      className="set-route-btn end" 
-                      onClick={(e) => { e.stopPropagation(); setRouteEnd([place.latitude, place.longitude]); }}
+                    <button
+                      className="set-route-btn end"
+                      onClick={(e) => { e.stopPropagation(); setRouteEnd([spot.latitude, spot.longitude]); }}
                     >
                       도착
                     </button>
                   </div>
                 </div>
-                <p className="item-address">{place.address}</p>
-                
-                <div className="score-row">
-                  <div className="stars">
-                    {Array.from({ length: place.stroller_score }).map((_, i) => (
-                      <Star key={i} size={14} className="star-icon filled" />
-                    ))}
-                    {Array.from({ length: 5 - place.stroller_score }).map((_, i) => (
-                      <Star key={i} size={14} className="star-icon" />
-                    ))}
-                  </div>
-                  <span className="score-badge">유모차 친화도: {place.stroller_score}/5</span>
-                </div>
-
-                <p className="reasoning-text">{place.reasoning}</p>
-                <div className="keywords">
-                  {place.review_keywords.map((kw, i) => (
-                    <span key={i} className="kw-tag">#{kw}</span>
-                  ))}
-                  {place.has_ramp && <span className="kw-tag">#경사로</span>}
-                  {place.has_baby_chair && <span className="kw-tag">#아기의자</span>}
-                  {place.has_stroller_parking && <span className="kw-tag">#유모차주차</span>}
-                  {place.doorway_width === "wide" && <span className="kw-tag">#넓은출입문</span>}
-                </div>
+                <p className="item-address">{spot.address}</p>
+                <div className="amenity-tags">{renderAmenityTags(spot)}</div>
+                <p className="access-note">{spot.access_note}</p>
+                {spot.source === "place" && (
+                  <>
+                    <div className="score-row">
+                      <div className="stars">
+                        {Array.from({ length: spot.stroller_score }).map((_, i) => (
+                          <Star key={`filled-${i}`} size={14} className="star-icon filled" />
+                        ))}
+                        {Array.from({ length: 5 - spot.stroller_score }).map((_, i) => (
+                          <Star key={`empty-${i}`} size={14} className="star-icon" />
+                        ))}
+                      </div>
+                      <span className="score-badge">유모차 친화도: {spot.stroller_score}/5</span>
+                    </div>
+                    <p className="reasoning-text">{spot.reasoning}</p>
+                  </>
+                )}
               </div>
             ))}
-            {places.length === 0 && <p className="empty-text">유모차 친화 장소 정보가 없습니다.</p>}
+            {spots.length === 0 && <p className="empty-text">조건에 맞는 장소가 없습니다.</p>}
           </div>
         </div>
 
-        <button className="refresh-btn" onClick={() => fetchData(center[0], center[1])} disabled={loading}>
+        <button className="refresh-btn" onClick={() => setCenter([center[0], center[1]])} disabled={loading}>
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           현 위치 기준 데이터 갱신
         </button>
       </div>
 
-      {/* Main Leaflet Map View */}
       <div className="map-view">
         <MapContainer
           center={center}
@@ -649,7 +652,7 @@ export default function Map() {
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url={darkMode 
+            url={darkMode
               ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
               : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             }
@@ -657,10 +660,9 @@ export default function Map() {
           <MapController center={center} />
           <MapEvents onContextMenu={setRouteEnd} />
 
-          {/* Render Start Marker */}
           {routeStart && (
-            <Marker 
-              position={routeStart} 
+            <Marker
+              position={routeStart}
               icon={createMarkerIcon("start")}
               draggable={true}
               eventHandlers={startEventHandlers}
@@ -675,10 +677,9 @@ export default function Map() {
             </Marker>
           )}
 
-          {/* Render End Marker */}
           {routeEnd && (
-            <Marker 
-              position={routeEnd} 
+            <Marker
+              position={routeEnd}
               icon={createMarkerIcon("end")}
               draggable={true}
               eventHandlers={endEventHandlers}
@@ -693,85 +694,48 @@ export default function Map() {
             </Marker>
           )}
 
-          {/* Render Baby Station Markers */}
-          {filteredBabyStations.map((station) => (
+          {spots.map((spot) => (
             <Marker
-              key={`station-${station.id}`}
-              position={[station.latitude, station.longitude]}
-              icon={createMarkerIcon("station")}
+              key={spot.id}
+              position={[spot.latitude, spot.longitude]}
+              icon={createMarkerIcon(spot.source === "care" ? "care" : "place")}
               eventHandlers={{
                 click: () => {
-                  setHighlightedStationId(station.id);
-                  setHighlightedPlaceId(null);
+                  setHighlightedSpotId(spot.id);
                   setTimeout(() => {
-                    const el = itemRefs.current[`station-${station.id}`];
+                    const el = itemRefs.current[spot.id];
                     if (el) {
                       el.scrollIntoView({ behavior: "smooth", block: "nearest" });
                     }
                   }, 100);
-                }
+                },
               }}
             >
               <Popup>
                 <div className="map-popup">
-                  <h3>👶 {station.name}</h3>
-                  <p>{station.address}</p>
-                  <p><strong>운영시간:</strong> {station.open_hours}</p>
+                  <h3>{spot.name}</h3>
+                  <p>{spot.address}</p>
+                  <p><strong>유형:</strong> {CATEGORY_LABELS[spot.category]}</p>
+                  {spot.open_hours && <p><strong>운영시간:</strong> {spot.open_hours}</p>}
+                  <p><strong>이용조건:</strong> {ACCESS_POLICY_LABELS[spot.access_policy]}</p>
+                  <div className="amenity-tags popup-amenities">{renderAmenityTags(spot)}</div>
                   <div className="popup-buttons">
-                    <button onClick={() => setRouteStart([station.latitude, station.longitude])}>출발지로 설정</button>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-
-          {/* Render Places Markers */}
-          {places.map((place) => (
-            <Marker
-              key={`place-${place.id}`}
-              position={[place.latitude, place.longitude]}
-              icon={createMarkerIcon("place")}
-              eventHandlers={{
-                click: () => {
-                  setHighlightedPlaceId(place.id);
-                  setHighlightedStationId(null);
-                  setTimeout(() => {
-                    const el = itemRefs.current[`place-${place.id}`];
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                    }
-                  }, 100);
-                }
-              }}
-            >
-              <Popup>
-                <div className="map-popup">
-                  <h3>
-                    {place.category === "cafe" ? "☕" : place.category === "park" ? "🌳" : "🍴"} {place.name}
-                  </h3>
-                  <p>{place.address}</p>
-                  <div className="score-row popup-score">
-                    <span>친화도: {place.stroller_score}점</span>
-                  </div>
-                  <p className="popup-reasoning">{place.reasoning}</p>
-                  <div className="popup-buttons">
-                    <button onClick={() => setRouteEnd([place.latitude, place.longitude])}>도착지로 설정</button>
+                    <button onClick={() => setRouteStart([spot.latitude, spot.longitude])}>출발지로 설정</button>
+                    <button onClick={() => setRouteEnd([spot.latitude, spot.longitude])}>도착지로 설정</button>
                   </div>
                 </div>
               </Popup>
             </Marker>
           ))}
         </MapContainer>
-        
-        {/* Floating Quick Action Overlay */}
+
         <div className="floating-hint">
           <Info size={16} />
-          <span>지도를 우클릭(Context Menu)하여 도착지를 임의 지정할 수 있습니다.</span>
+          <span>장소 카드에서 출발지와 도착지를 선택하세요.</span>
         </div>
 
-        {/* Floating Theme Switcher */}
-        <button 
-          className="dark-mode-toggle" 
+        <button
+          className="dark-mode-toggle"
           onClick={() => setDarkMode(!darkMode)}
           aria-label="다크 모드 전환"
         >
