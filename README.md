@@ -31,7 +31,7 @@ AsobiPlan
 - **FastAPI API 서버**: 데이터베이스에 저장된 유모차 친화 장소 목록을 반경 검색 및 필터와 함께 반환합니다.
 - **Gemini AI 리뷰 분석 파이프라인**: `gemini-2.5-flash` 모델을 사용하여 수집된 매장 리뷰 텍스트를 기반으로 유모차 친화도 점수(`stroller_score`), 태그(키워드), 편의시설 여부 및 한국어 요약(`child_summary`, `reasoning`)을 자동으로 생성합니다.
 - **데이터 수집 및 가공 스크립트**:
-  - `collect_places.py`: Google Places API 및 Gemini API를 연동하여 실제 데이터를 수집합니다.
+  - `collect_places.py`: API 키 없이 OpenStreetMap 공개 데이터로 장소를 수집하거나, 선택적으로 Google Places API 및 Gemini API를 연동하여 실제 데이터를 수집합니다.
   - `import_akachan_flat.py`: 도쿄도 '아카짱 플랫(赤ちゃん・ふらっと)' 수유 공간 원천 데이터를 DB로 임포트합니다.
   - `keyword_analysis.py`: 리뷰 데이터를 분석해 점수와 키워드를 추출합니다.
 
@@ -40,7 +40,7 @@ AsobiPlan
 ## 🚀 로컬 실행 가이드
 
 ### 1. 환경 설정
-루트 디렉터리의 `.env.example` 파일을 복사하여 `.env` 파일을 생성하고 필요한 API Key를 설정합니다.
+API 키 없이 OpenStreetMap 공개 데이터 기반 수집을 사용할 수 있습니다. Google Places 및 Gemini 기반 라이브 수집을 사용할 때만 루트 디렉터리의 `.env.example` 파일을 복사하여 `.env` 파일을 생성하고 필요한 API Key를 설정합니다.
 
 ```env
 # Google Places API Config
@@ -67,6 +67,9 @@ pip install -r requirements.txt
 # 데이터베이스 초기화 및 기본 모의(Mock) 데이터 로드
 python scripts/import_data.py
 
+# (선택) API 키 없이 OpenStreetMap 공개 데이터 기반 장소 수집 실행
+python scripts/collect_places.py --open-data
+
 # (선택) Google Places API & Gemini API 기반 라이브 데이터 수집 실행
 python scripts/collect_places.py --live
 
@@ -92,6 +95,8 @@ npm run dev
 - `frontend/public/data/baby-stations.json`
 - `frontend/public/data/places.json`
 - `frontend/public/data/avoid-areas.json`
+
+`collect_places.py --open-data`는 OpenStreetMap 공개 태그를 기반으로 장소와 유모차 접근성 단서를 수집합니다. 이 모드에서는 Google 평점과 리뷰 기반 AI 요약을 사용하지 않으며, `wheelchair`, `changing_table`, `toilets:wheelchair` 등 공개 태그와 공식 수유·기저귀 시설 근접도를 기준으로 점수를 산정합니다. OpenStreetMap 기반 데이터 사용 시 OpenStreetMap 기여자 표기를 유지해야 합니다.
 
 ### GitHub Pages 배포 설정
 1. GitHub 저장소 `Settings > Pages`에서 Source를 `GitHub Actions`로 설정합니다.

@@ -115,6 +115,43 @@ def test_get_places_filtering(db, client):
     assert data[0]["has_baby_chair"] is True
     assert data[0]["has_stroller_parking"] is True
 
+
+def test_get_places_returns_open_data_metadata_and_child_amenities(db, client):
+    place = StrollerFriendlyPlace(
+        name="Open Data Cafe",
+        category="cafe",
+        latitude=35.6720,
+        longitude=139.8170,
+        stroller_score=4,
+        has_ramp=True,
+        doorway_width="wide",
+        additional_info={
+            "has_nursing_room": True,
+            "has_diaper_table": True,
+            "has_hot_water": False,
+            "source_name": "OpenStreetMap",
+            "source_url": "https://www.openstreetmap.org/copyright",
+            "last_verified_at": "2026-05-23",
+            "confidence": "manual_checked",
+            "osm_id": "node/10",
+        },
+    )
+    db.add(place)
+    db.commit()
+
+    response = client.get("/api/places?lat=35.6728&lon=139.8174&min_score=1")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["has_nursing_room"] is True
+    assert data[0]["has_diaper_table"] is True
+    assert data[0]["has_hot_water"] is False
+    assert data[0]["source_name"] == "OpenStreetMap"
+    assert data[0]["source_url"] == "https://www.openstreetmap.org/copyright"
+    assert data[0]["last_verified_at"] == "2026-05-23"
+    assert data[0]["confidence"] == "manual_checked"
+    assert data[0]["osm_id"] == "node/10"
+
 def test_get_places_rejects_invalid_min_score(client):
     response = client.get("/api/places?lat=35.6728&lon=139.8174&min_score=0")
     assert response.status_code == 422

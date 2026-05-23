@@ -170,6 +170,14 @@ def get_places(
             "doorway_width": p.doorway_width,
             "has_baby_chair": p.has_baby_chair,
             "has_stroller_parking": p.has_stroller_parking,
+            "has_nursing_room": (p.additional_info or {}).get("has_nursing_room"),
+            "has_diaper_table": (p.additional_info or {}).get("has_diaper_table"),
+            "has_hot_water": (p.additional_info or {}).get("has_hot_water"),
+            "source_name": (p.additional_info or {}).get("source_name"),
+            "source_url": (p.additional_info or {}).get("source_url"),
+            "last_verified_at": (p.additional_info or {}).get("last_verified_at"),
+            "confidence": (p.additional_info or {}).get("confidence"),
+            "osm_id": (p.additional_info or {}).get("osm_id"),
             "child_summary": getattr(p, "child_summary", "")
         } for p in places
     ]

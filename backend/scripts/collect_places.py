@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import json
+from datetime import date
 
 # Add backend directory to system path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,6 +13,9 @@ from scripts.keyword_analysis import analyze_stroller_friendliness_ai, run_keywo
 TOYOCHO_LAT = 35.6698
 TOYOCHO_LNG = 139.8174
 RADIUS = 1000 # 1km
+KOTO_BBOX = (35.5830, 139.7650, 35.7080, 139.8600)
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OPEN_DATA_SOURCE_URL = "https://www.openstreetmap.org/copyright"
 
 # 1. Fallback Mock data representing REAL places within 1km of Toyocho Station
 FALLBACK_PLACES = [
@@ -155,6 +159,11 @@ def parse_args(argv=None):
         action="store_true",
         help="Require GOOGLE_PLACES_API_KEY and fail instead of using mock fallback when the key is missing.",
     )
+    parser.add_argument(
+        "--open-data",
+        action="store_true",
+        help="Collect places from public open data sources that do not require API keys.",
+    )
     return parser.parse_args(argv)
 
 
@@ -169,6 +178,419 @@ def load_environment():
         return
 
     load_dotenv()
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv(os.path.join(project_root, ".env"))
+
+
+def normalize_text(value: str | None) -> str:
+    return "".join((value or "").lower().split())
+
+
+def infer_osm_category(tags: dict) -> str:
+    amenity = tags.get("amenity")
+    leisure = tags.get("leisure")
+    shop = tags.get("shop")
+    tourism = tags.get("tourism")
+
+    if amenity in {"restaurant", "fast_food", "food_court"}:
+        return "restaurant"
+    if amenity == "cafe":
+        return "cafe"
+    if leisure == "park":
+        return "park"
+    if shop in {"mall", "department_store", "supermarket"}:
+        return "mall"
+    if amenity in {"community_centre", "library", "public_building"} or tourism == "museum":
+        return "public_facility"
+    return "public_facility"
+
+
+def osm_address(tags: dict) -> str:
+    address_parts = [
+        tags.get("addr:province"),
+        tags.get("addr:city"),
+        tags.get("addr:suburb"),
+        tags.get("addr:quarter"),
+        tags.get("addr:neighbourhood"),
+        tags.get("addr:block_number"),
+        tags.get("addr:housenumber"),
+    ]
+    address = " ".join(part for part in address_parts if part)
+    return address or tags.get("addr:full") or tags.get("addr:street") or "주소 확인 필요"
+
+
+def osm_name(tags: dict) -> str:
+    return tags.get("name:ko") or tags.get("name:ja") or tags.get("name:en") or tags.get("name") or "이름 확인 필요"
+
+
+def osm_evidence_tags(tags: dict) -> dict:
+    evidence_keys = [
+        "amenity",
+        "leisure",
+        "shop",
+        "tourism",
+        "wheelchair",
+        "changing_table",
+        "toilets:wheelchair",
+        "highchair",
+        "stroller",
+        "parking:stroller",
+        "fee",
+        "opening_hours",
+        "outdoor_seating",
+    ]
+    return {key: tags[key] for key in evidence_keys if key in tags}
+
+
+def infer_access_policy(category: str, tags: dict) -> str:
+    if tags.get("fee") == "yes":
+        return "paid_entry"
+    if category in {"restaurant", "cafe"}:
+        return "customer_only"
+    return "public_free"
+
+
+def infer_stroller_features(tags: dict, nearby_station: dict | None = None) -> dict:
+    wheelchair = tags.get("wheelchair")
+    changing_table = tags.get("changing_table")
+    toilets_wheelchair = tags.get("toilets:wheelchair")
+    indoor = tags.get("indoor")
+    outdoor_seating = tags.get("outdoor_seating")
+
+    score = 3
+    keywords = []
+
+    if wheelchair in {"yes", "limited"}:
+        score += 1
+        keywords.append("휠체어 접근")
+    elif wheelchair == "no":
+        score -= 2
+        keywords.append("접근 주의")
+
+    if toilets_wheelchair == "yes":
+        score += 1
+        keywords.append("휠체어 화장실")
+    if changing_table == "yes":
+        score += 1
+        keywords.append("기저귀 교환대")
+    if outdoor_seating == "yes":
+        keywords.append("야외 좌석")
+    if indoor == "no":
+        score -= 1
+
+    if nearby_station:
+        score += 1
+        keywords.append("공식시설 근접")
+
+    final_score = max(1, min(5, score))
+    has_diaper_table = changing_table == "yes" or bool(nearby_station and nearby_station.get("has_diaper_table"))
+    has_nursing_room = bool(nearby_station and nearby_station.get("has_nursing_room"))
+    has_hot_water = bool(nearby_station and nearby_station.get("has_hot_water"))
+    has_ramp = wheelchair in {"yes", "limited"}
+    doorway_width = "wide" if wheelchair == "yes" else "medium" if wheelchair == "limited" else "narrow" if wheelchair == "no" else "medium"
+    confidence = "manual_checked" if wheelchair or changing_table or nearby_station else "unknown"
+
+    if not keywords:
+        keywords = ["오픈데이터"]
+
+    return {
+        "stroller_score": final_score,
+        "reasoning": "공개 지도 태그와 공식 수유·기저귀 시설 근접 정보를 기준으로 산정했습니다.",
+        "review_keywords": keywords,
+        "has_ramp": has_ramp,
+        "doorway_width": doorway_width,
+        "has_baby_chair": tags.get("highchair") == "yes",
+        "has_stroller_parking": tags.get("stroller") == "yes" or tags.get("parking:stroller") == "yes",
+        "has_nursing_room": has_nursing_room,
+        "has_diaper_table": has_diaper_table,
+        "has_hot_water": has_hot_water,
+        "confidence": confidence,
+    }
+
+
+def build_open_data_summary(place: dict) -> str:
+    if place["has_nursing_room"] or place["has_diaper_table"]:
+        return "공식 수유·기저귀 시설과 가까워 아이 동반 방문 중 쉬어가기 좋은 장소예요."
+    if place["has_ramp"]:
+        return "공개 지도 접근성 정보상 유모차 진입이 비교적 수월한 장소예요."
+    if place["stroller_score"] <= 2:
+        return "접근성 정보가 제한적이거나 주의가 필요한 장소라 방문 전 확인을 권장해요."
+    return "공개 지도 정보를 기준으로 아이와 함께 방문 후보로 볼 수 있는 장소예요."
+
+
+def load_existing_baby_stations() -> list[dict]:
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    stations_path = os.path.join(project_root, "frontend", "public", "data", "baby-stations.json")
+    if not os.path.exists(stations_path):
+        return FALLBACK_BABY_STATIONS
+
+    with open(stations_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    stations = []
+    for feature in data.get("features", []):
+        geometry = feature.get("geometry") or {}
+        coordinates = geometry.get("coordinates")
+        properties = feature.get("properties", {})
+        if not coordinates or len(coordinates) < 2:
+            continue
+        stations.append({
+            **properties,
+            "latitude": coordinates[1],
+            "longitude": coordinates[0],
+            "has_nursing_room": properties.get("has_nursing_room", False),
+            "has_diaper_table": properties.get("has_diaper_table", False),
+            "has_hot_water": properties.get("has_hot_water", False),
+        })
+    return stations
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+
+    radius = 6371000
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def find_nearby_baby_station(lat: float, lng: float, stations: list[dict], max_distance_meters: float = 80) -> dict | None:
+    best = None
+    best_distance = max_distance_meters
+    for station in stations:
+        distance = haversine_distance(lat, lng, station["latitude"], station["longitude"])
+        if distance <= best_distance:
+            best = station
+            best_distance = distance
+    return best
+
+
+def build_overpass_query() -> str:
+    south, west, north, east = KOTO_BBOX
+    bbox = f"{south},{west},{north},{east}"
+    selectors = [
+        'node["amenity"~"^(cafe|restaurant|fast_food|food_court|community_centre|library)$"]',
+        'way["amenity"~"^(cafe|restaurant|fast_food|food_court|community_centre|library)$"]',
+        'relation["amenity"~"^(cafe|restaurant|fast_food|food_court|community_centre|library)$"]',
+        'node["leisure"="park"]',
+        'way["leisure"="park"]',
+        'relation["leisure"="park"]',
+        'node["shop"~"^(mall|department_store|supermarket)$"]',
+        'way["shop"~"^(mall|department_store|supermarket)$"]',
+        'relation["shop"~"^(mall|department_store|supermarket)$"]',
+        'node["tourism"="museum"]',
+        'way["tourism"="museum"]',
+        'relation["tourism"="museum"]',
+    ]
+    body = "\n".join(f"  {selector}({bbox});" for selector in selectors)
+    return f"[out:json][timeout:25];\n(\n{body}\n);\nout body center;"
+
+
+def fetch_openstreetmap_places() -> list[dict]:
+    import requests
+
+    response = requests.post(
+        OVERPASS_URL,
+        data=build_overpass_query().encode("utf-8"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "User-Agent": "AsobiPlan open data collector",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json().get("elements", [])
+
+
+def element_coordinates(element: dict) -> tuple[float, float] | None:
+    if "lat" in element and "lon" in element:
+        return float(element["lat"]), float(element["lon"])
+    center = element.get("center")
+    if center and "lat" in center and "lon" in center:
+        return float(center["lat"]), float(center["lon"])
+    return None
+
+
+def build_open_data_places(elements: list[dict], stations: list[dict]) -> list[dict]:
+    places = []
+    seen = set()
+    for element in elements:
+        tags = element.get("tags") or {}
+        coordinates = element_coordinates(element)
+        name = osm_name(tags)
+        if not coordinates or name == "이름 확인 필요":
+            continue
+
+        lat, lng = coordinates
+        category = infer_osm_category(tags)
+        dedupe_key = (normalize_text(name), round(lat, 4), round(lng, 4))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        nearby_station = find_nearby_baby_station(lat, lng, stations)
+        features = infer_stroller_features(tags, nearby_station)
+        access_policy = infer_access_policy(category, tags)
+        source_id = f"{element.get('type', 'osm')}/{element.get('id')}"
+        place = {
+            "id": len(places) + 1,
+            "name": name,
+            "category": category,
+            "address": osm_address(tags),
+            "latitude": lat,
+            "longitude": lng,
+            "google_rating": None,
+            "access_policy": access_policy,
+            "access_note": "OpenStreetMap 공개 태그 기반 정보입니다. 세부 이용 조건은 현장에서 확인해 주세요.",
+            "source_name": "OpenStreetMap",
+            "source_url": OPEN_DATA_SOURCE_URL,
+            "last_verified_at": date.today().isoformat(),
+            "osm_id": source_id,
+            "osm_tags": osm_evidence_tags(tags),
+            **features,
+        }
+        place["child_summary"] = build_open_data_summary(place)
+        places.append(place)
+    return places
+
+
+def export_static_and_database(processed_places: list[dict], processed_stations: list[dict]) -> None:
+    places_geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [p["longitude"], p["latitude"]]
+                },
+                "properties": {
+                    key: value
+                    for key, value in p.items()
+                    if key not in {"latitude", "longitude"} and value is not None
+                }
+            } for p in processed_places
+        ]
+    }
+
+    stations_geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [s["longitude"], s["latitude"]]
+                },
+                "properties": {
+                    key: value
+                    for key, value in s.items()
+                    if key not in {"latitude", "longitude"} and value is not None
+                }
+            } for s in processed_stations
+        ]
+    }
+
+    frontend_data_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "frontend", "public", "data"
+    )
+
+    os.makedirs(frontend_data_dir, exist_ok=True)
+    places_json_path = os.path.join(frontend_data_dir, "places.json")
+    stations_json_path = os.path.join(frontend_data_dir, "baby-stations.json")
+
+    with open(places_json_path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(places_geojson, ensure_ascii=False, indent=2) + "\n")
+        print(f"Successfully saved GeoJSON places data to {places_json_path}")
+
+    with open(stations_json_path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(stations_geojson, ensure_ascii=False, indent=2) + "\n")
+        print(f"Successfully saved GeoJSON baby stations data to {stations_json_path}")
+
+    print("Connecting to backend database for import...")
+    from sqlalchemy.orm import Session
+
+    from app.database import engine, init_db, BabyStation, StrollerFriendlyPlace, IS_SQLITE
+
+    db = Session(bind=engine)
+    try:
+        init_db()
+        db.query(StrollerFriendlyPlace).delete()
+        db.query(BabyStation).delete()
+
+        for p in processed_places:
+            additional_info = {
+                "access_policy": p["access_policy"],
+                "access_note": p["access_note"],
+                "source_name": p.get("source_name"),
+                "source_url": p.get("source_url"),
+                "last_verified_at": p.get("last_verified_at"),
+                "confidence": p.get("confidence"),
+                "osm_id": p.get("osm_id"),
+                "osm_tags": p.get("osm_tags"),
+                "has_nursing_room": p.get("has_nursing_room"),
+                "has_diaper_table": p.get("has_diaper_table"),
+                "has_hot_water": p.get("has_hot_water"),
+            }
+            place_db = StrollerFriendlyPlace(
+                google_place_id=p.get("google_place_id"),
+                name=p["name"],
+                category=p["category"],
+                address=p["address"],
+                latitude=p["latitude"],
+                longitude=p["longitude"],
+                google_rating=p.get("google_rating"),
+                stroller_score=p["stroller_score"],
+                reasoning=p["reasoning"],
+                review_keywords=p["review_keywords"],
+                has_ramp=p["has_ramp"],
+                doorway_width=p["doorway_width"],
+                has_baby_chair=p["has_baby_chair"],
+                has_stroller_parking=p["has_stroller_parking"],
+                child_summary=p["child_summary"],
+                additional_info={key: value for key, value in additional_info.items() if value is not None}
+            )
+            if not IS_SQLITE:
+                place_db.geom = f"POINT({p['longitude']} {p['latitude']})"
+            db.add(place_db)
+
+        for s in processed_stations:
+            station_db = BabyStation(
+                name=s["name"],
+                address=s["address"],
+                latitude=s["latitude"],
+                longitude=s["longitude"],
+                has_nursing_room=s["has_nursing_room"],
+                has_diaper_table=s["has_diaper_table"],
+                has_hot_water=s["has_hot_water"],
+                open_hours=s["open_hours"],
+                additional_info={
+                    "category": s["category"],
+                    "access_policy": s["access_policy"],
+                    "access_note": s["access_note"],
+                    "source_name": s.get("source_name"),
+                    "source_url": s.get("source_url"),
+                    "last_verified_at": s.get("last_verified_at"),
+                    "confidence": s.get("confidence"),
+                }
+            )
+            if not IS_SQLITE:
+                station_db.geom = f"POINT({s['longitude']} {s['latitude']})"
+            db.add(station_db)
+
+        db.commit()
+        print("Database sync completed successfully!")
+    except Exception as e:
+        db.rollback()
+        print(f"Error saving to database: {e}")
+        raise e
+    finally:
+        db.close()
 
 def fetch_from_google_places_api(api_key: str) -> tuple:
     """
@@ -347,6 +769,34 @@ def main(argv=None):
 
     places_api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
+
+    if args.open_data:
+        print("Running in Open Data mode (no Google Places or Gemini API keys required).")
+        stations = load_existing_baby_stations()
+        elements = fetch_openstreetmap_places()
+        processed_places = build_open_data_places(elements, stations)
+        if not processed_places:
+            raise RuntimeError("Open data collection returned 0 places.")
+        processed_stations = [
+            {
+                **s,
+                "id": idx + 1,
+                "name": s["name"],
+                "category": s.get("category") or ("station" if "역" in s["name"] else "public_facility" if "구청" in s["name"] or "도서관" in s["name"] or "센터" in s["name"] else "mall"),
+                "address": s.get("address", "주소 확인 필요"),
+                "latitude": s["latitude"],
+                "longitude": s["longitude"],
+                "has_nursing_room": s["has_nursing_room"],
+                "has_diaper_table": s["has_diaper_table"],
+                "has_hot_water": s["has_hot_water"],
+                "open_hours": s.get("open_hours", "확인 필요"),
+                "access_policy": s.get("access_policy", "public_free"),
+                "access_note": s.get("access_note", "공용 유아 휴게 및 케어 시설입니다.")
+            }
+            for idx, s in enumerate(stations)
+        ]
+        export_static_and_database(processed_places, processed_stations)
+        return
     
     use_mock = False
     if not is_configured_api_key(places_api_key):
@@ -409,151 +859,7 @@ def main(argv=None):
             "access_note": s.get("access_note", "공용 유아 휴게 및 케어 시설입니다.")
         })
         
-    # 3. Export to GeoJSON Format
-    places_geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [p["longitude"], p["latitude"]]
-                },
-                "properties": {
-                    "id": p["id"],
-                    "name": p["name"],
-                    "category": p["category"],
-                    "address": p["address"],
-                    "google_rating": p["google_rating"],
-                    "stroller_score": p["stroller_score"],
-                    "reasoning": p["reasoning"],
-                    "review_keywords": p["review_keywords"],
-                    "has_ramp": p["has_ramp"],
-                    "doorway_width": p["doorway_width"],
-                    "has_baby_chair": p["has_baby_chair"],
-                    "has_stroller_parking": p["has_stroller_parking"],
-                    "access_policy": p["access_policy"],
-                    "access_note": p["access_note"],
-                    "child_summary": p["child_summary"]
-                }
-            } for p in processed_places
-        ]
-    }
-    
-    stations_geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [s["longitude"], s["latitude"]]
-                },
-                "properties": {
-                    "id": s["id"],
-                    "name": s["name"],
-                    "category": s["category"],
-                    "address": s["address"],
-                    "has_nursing_room": s["has_nursing_room"],
-                    "has_diaper_table": s["has_diaper_table"],
-                    "has_hot_water": s["has_hot_water"],
-                    "open_hours": s["open_hours"],
-                    "access_policy": s["access_policy"],
-                    "access_note": s["access_note"]
-                }
-            } for s in processed_stations
-        ]
-    }
-    
-    # Save files to frontend public path
-    frontend_data_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "frontend", "public", "data"
-    )
-    
-    places_json_path = os.path.join(frontend_data_dir, "places.json")
-    stations_json_path = os.path.join(frontend_data_dir, "baby-stations.json")
-    
-    os.makedirs(frontend_data_dir, exist_ok=True)
-    
-    with open(places_json_path, 'w', encoding='utf-8') as f:
-        json.dump(places_geojson, f, ensure_ascii=False, indent=2)
-        print(f"Successfully saved GeoJSON places data to {places_json_path}")
-        
-    with open(stations_json_path, 'w', encoding='utf-8') as f:
-        json.dump(stations_geojson, f, ensure_ascii=False, indent=2)
-        print(f"Successfully saved GeoJSON baby stations data to {stations_json_path}")
-        
-    # 4. Import to SQLite DB (asobi.db)
-    print("Connecting to backend database for import...")
-    from sqlalchemy.orm import Session
-
-    from app.database import engine, init_db, BabyStation, StrollerFriendlyPlace, IS_SQLITE
-
-    db = Session(bind=engine)
-    try:
-        # Reinitialize schemas
-        init_db()
-        
-        # Clear table
-        db.query(StrollerFriendlyPlace).delete()
-        db.query(BabyStation).delete()
-        
-        # Insert stroller friendly places
-        for p in processed_places:
-            place_db = StrollerFriendlyPlace(
-                name=p["name"],
-                category=p["category"],
-                address=p["address"],
-                latitude=p["latitude"],
-                longitude=p["longitude"],
-                google_rating=p["google_rating"],
-                stroller_score=p["stroller_score"],
-                reasoning=p["reasoning"],
-                review_keywords=p["review_keywords"],
-                has_ramp=p["has_ramp"],
-                doorway_width=p["doorway_width"],
-                has_baby_chair=p["has_baby_chair"],
-                has_stroller_parking=p["has_stroller_parking"],
-                child_summary=p["child_summary"],
-                additional_info={
-                    "access_policy": p["access_policy"],
-                    "access_note": p["access_note"]
-                }
-            )
-            if not IS_SQLITE:
-                place_db.geom = f"POINT({p['longitude']} {p['latitude']})"
-            db.add(place_db)
-            
-        # Insert baby stations
-        for s in processed_stations:
-            station_db = BabyStation(
-                name=s["name"],
-                address=s["address"],
-                latitude=s["latitude"],
-                longitude=s["longitude"],
-                has_nursing_room=s["has_nursing_room"],
-                has_diaper_table=s["has_diaper_table"],
-                has_hot_water=s["has_hot_water"],
-                open_hours=s["open_hours"],
-                additional_info={
-                    "category": s["category"],
-                    "access_policy": s["access_policy"],
-                    "access_note": s["access_note"]
-                }
-            )
-            if not IS_SQLITE:
-                station_db.geom = f"POINT({s['longitude']} {s['latitude']})"
-            db.add(station_db)
-            
-        db.commit()
-        print("Database sync completed successfully!")
-    except Exception as e:
-        db.rollback()
-        print(f"Error saving to database: {e}")
-        raise e
-    finally:
-        db.close()
+    export_static_and_database(processed_places, processed_stations)
 
 if __name__ == "__main__":
     main()

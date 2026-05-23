@@ -45,7 +45,7 @@ export interface Place {
   address: string;
   latitude: number;
   longitude: number;
-  google_rating: number;
+  google_rating?: number;
   stroller_score: number;
   reasoning: string;
   review_keywords: string[];
@@ -60,6 +60,14 @@ export interface Place {
   access_policy?: AccessPolicy;
   access_note?: string;
   child_summary?: string;
+  google_place_id?: string;
+  source_name?: string;
+  source_url?: string;
+  last_verified_at?: string;
+  confidence?: "official" | "manual_checked" | "unknown";
+  user_ratings_total?: number;
+  osm_id?: string;
+  osm_tags?: Record<string, string>;
 }
 
 export type PointFeature<T> = {
@@ -93,6 +101,11 @@ export type Spot = {
   access_note: string;
   doorway_width?: "wide" | "medium" | "narrow";
   child_summary: string;
+  source_name?: string;
+  source_url?: string;
+  last_verified_at?: string;
+  confidence?: "official" | "manual_checked" | "unknown";
+  osm_id?: string;
   amenities: {
     nursing_room: boolean;
     diaper_table: boolean;
@@ -246,6 +259,10 @@ export const toCareSpot = (station: BabyStation): Spot => ({
   access_note: station.access_note || "이용 조건을 현장에서 확인해 주세요.",
   doorway_width: "wide",
   child_summary: station.access_note || "수유실과 기저귀 교환대가 갖춰진 편리한 아기 돌봄 공간입니다.",
+  source_name: station.source_name,
+  source_url: station.source_url,
+  last_verified_at: station.last_verified_at,
+  confidence: station.confidence,
   amenities: {
     nursing_room: station.has_nursing_room,
     diaper_table: station.has_diaper_table,
@@ -294,6 +311,11 @@ export const toPlaceSpot = (place: Place): Spot => ({
   access_note: place.access_note || "이용 조건을 현장에서 확인해 주세요.",
   doorway_width: place.doorway_width as Spot["doorway_width"],
   child_summary: place.child_summary || buildChildSummary(place),
+  source_name: place.source_name,
+  source_url: place.source_url,
+  last_verified_at: place.last_verified_at,
+  confidence: place.confidence,
+  osm_id: place.osm_id,
   amenities: {
     nursing_room: Boolean(place.has_nursing_room),
     diaper_table: Boolean(place.has_diaper_table),
