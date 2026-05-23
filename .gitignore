@@ -7,12 +7,15 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 .venv/
 venv/
 backend/.venv/
 backend/venv/
+backend/.test-venv/
 
 # Local databases
 *.db
@@ -64,3 +67,9 @@ Thumbs.db
 
 # Local reference / temp
 ui_reference/
+stitch_temp/
+tmp/
+temp/
+
+# Generated intermediate data
+frontend/public/data/*.pending-geocode.json
