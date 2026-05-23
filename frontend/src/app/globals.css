@@ -58,13 +58,13 @@
   --spacing-stack-lg: 24px;
   --spacing-safe: env(safe-area-inset-bottom);
 
-  --font-family-headline-lg: "Plus Jakarta Sans", sans-serif;
-  --font-family-label-lg: "Plus Jakarta Sans", sans-serif;
-  --font-family-body-md: "Plus Jakarta Sans", sans-serif;
-  --font-family-body-lg: "Plus Jakarta Sans", sans-serif;
-  --font-family-headline-md: "Plus Jakarta Sans", sans-serif;
-  --font-family-headline-lg-mobile: "Plus Jakarta Sans", sans-serif;
-  --font-family-label-sm: "Plus Jakarta Sans", sans-serif;
+  --font-family-headline-lg: Arial, "Helvetica Neue", sans-serif;
+  --font-family-label-lg: Arial, "Helvetica Neue", sans-serif;
+  --font-family-body-md: Arial, "Helvetica Neue", sans-serif;
+  --font-family-body-lg: Arial, "Helvetica Neue", sans-serif;
+  --font-family-headline-md: Arial, "Helvetica Neue", sans-serif;
+  --font-family-headline-lg-mobile: Arial, "Helvetica Neue", sans-serif;
+  --font-family-label-sm: Arial, "Helvetica Neue", sans-serif;
 
   --text-headline-md: 20px;
   --text-headline-md--line-height: 28px;
