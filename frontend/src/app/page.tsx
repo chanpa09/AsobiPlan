@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import SearchBar from "@/components/home/SearchBar";
 import PlaceCard from "@/components/home/PlaceCard";
@@ -9,14 +9,18 @@ import {
   CATEGORY_LABELS,
   DEFAULT_CENTER,
   filterSpots,
-  loadStaticSpots,
+  getAvailableTileIdsForBounds,
+  loadSpotTile,
+  loadSpotTileManifest,
+  tileIdsToCoordinates,
+  type MapBounds,
   type MarkerPosition,
   type Spot,
   type SpotCategory,
   type SpotFilters,
 } from "@/lib/spots";
 
-const Map = dynamic(() => import("../components/Map"), {
+const LeafletMap = dynamic(() => import("../components/Map"), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center w-full h-full bg-surface-container-lowest">
@@ -42,7 +46,9 @@ const formatPosition = (position: MarkerPosition | null) =>
 export default function Home() {
   const [mapCenter, setMapCenter] = useState<MarkerPosition>(DEFAULT_CENTER);
   const [listCenter, setListCenter] = useState<MarkerPosition>(DEFAULT_CENTER);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [tileManifest, setTileManifest] = useState<Awaited<ReturnType<typeof loadSpotTileManifest>> | null>(null);
   const [activeSpotId, setActiveSpotId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<SpotFilters>(DEFAULT_FILTERS);
@@ -54,18 +60,76 @@ export default function Home() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const tileCacheRef = useRef(new Map<string, Spot[]>());
+  const pendingTilesRef = useRef(new Map<string, Promise<Spot[]>>());
+  const tileCoordinates = useMemo(() => (tileManifest ? tileIdsToCoordinates(tileManifest.tiles) : []), [tileManifest]);
 
   useEffect(() => {
     let alive = true;
-    loadStaticSpots()
-      .then((loadedSpots) => {
+    loadSpotTileManifest()
+      .then((manifest) => {
         if (!alive) return;
-        setSpots(loadedSpots);
+        setTileManifest(manifest);
         setDataError(null);
       })
       .catch(() => {
         if (!alive) return;
-        setDataError("장소 데이터를 불러오지 못했습니다.");
+        setDataError("장소 타일 정보를 불러오지 못했습니다.");
+        setIsLoadingData(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tileManifest || !mapBounds) return;
+
+    let alive = true;
+    const targetTileIds = getAvailableTileIdsForBounds(mapBounds, tileCoordinates, tileManifest.tileZoom);
+    const missingTileIds = targetTileIds.filter((tileId) => !tileCacheRef.current.has(tileId));
+
+    const publishTileSpots = () => {
+      const dedupedSpots = new Map<string, Spot>();
+      targetTileIds.forEach((tileId) => {
+        tileCacheRef.current.get(tileId)?.forEach((spot) => {
+          dedupedSpots.set(spot.id, spot);
+        });
+      });
+      setSpots(Array.from(dedupedSpots.values()));
+    };
+
+    if (missingTileIds.length === 0) {
+      publishTileSpots();
+      setIsLoadingData(false);
+      return;
+    }
+
+    setIsLoadingData(true);
+    const tileLoads = missingTileIds.map((tileId) => {
+      const existingLoad = pendingTilesRef.current.get(tileId);
+      const load =
+        existingLoad ||
+        loadSpotTile(tileId, tileManifest.tileZoom).finally(() => {
+          pendingTilesRef.current.delete(tileId);
+        });
+      pendingTilesRef.current.set(tileId, load);
+      return load.then((spotsInTile) => [tileId, spotsInTile] as const);
+    });
+
+    Promise.all(tileLoads)
+      .then((loadedTiles) => {
+        loadedTiles.forEach(([tileId, spotsInTile]) => {
+          tileCacheRef.current.set(tileId, spotsInTile);
+        });
+        if (!alive) return;
+        setDataError(null);
+        publishTileSpots();
+      })
+      .catch(() => {
+        if (!alive) return;
+        setDataError("현재 화면의 장소 데이터를 불러오지 못했습니다.");
       })
       .finally(() => {
         if (alive) setIsLoadingData(false);
@@ -74,11 +138,22 @@ export default function Home() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [mapBounds, tileCoordinates, tileManifest]);
+
+  const spotsInCurrentBounds = useMemo(() => {
+    if (!mapBounds) return spots;
+    return spots.filter(
+      (spot) =>
+        spot.latitude >= mapBounds.south &&
+        spot.latitude <= mapBounds.north &&
+        spot.longitude >= mapBounds.west &&
+        spot.longitude <= mapBounds.east
+    );
+  }, [mapBounds, spots]);
 
   const visibleSpots = useMemo(
-    () => filterSpots(spots, listCenter, searchQuery, filters),
-    [filters, listCenter, searchQuery, spots]
+    () => filterSpots(spotsInCurrentBounds, listCenter, searchQuery, filters, Number.POSITIVE_INFINITY),
+    [filters, listCenter, searchQuery, spotsInCurrentBounds]
   );
 
   const googleMapsRouteUrl = routeStart && routeEnd ? buildGoogleMapsUrl(routeStart, routeEnd) : null;
@@ -97,6 +172,10 @@ export default function Home() {
   const handleMapCenterChange = useCallback((center: MarkerPosition) => {
     setMapCenter(center);
     setListCenter(center);
+  }, []);
+
+  const handleMapBoundsChange = useCallback((bounds: MapBounds) => {
+    setMapBounds(bounds);
   }, []);
 
   const findCurrentLocation = (options: { updateListCenter: boolean }) =>
@@ -181,7 +260,7 @@ export default function Home() {
       />
 
       <div className="w-full md:flex-1 h-[50vh] md:h-full bg-surface-container-lowest relative z-0">
-        <Map
+        <LeafletMap
           center={mapCenter}
           spots={visibleSpots}
           selectedSpotId={activeSpotId}
@@ -189,6 +268,7 @@ export default function Home() {
           routeStart={routeStart}
           routeEnd={routeEnd}
           onCenterChange={handleMapCenterChange}
+          onBoundsChange={handleMapBoundsChange}
           onSpotSelect={setActiveSpotId}
           onRouteStartChange={setRouteStart}
           onRouteEndChange={setRouteEnd}
@@ -226,7 +306,7 @@ export default function Home() {
             <div>
               <h2 className="font-headline-lg text-headline-lg text-on-surface mb-1">{panelTitle}</h2>
               <p className="font-body-md text-body-md text-on-surface-variant">
-                {isLoadingData ? "장소 데이터를 불러오는 중입니다." : `현재 지도 주변 ${visibleSpots.length}곳`}
+                {isLoadingData ? "현재 화면 데이터를 불러오는 중입니다." : `현재 화면 주변 ${visibleSpots.length}곳`}
               </p>
             </div>
             <button
@@ -330,7 +410,7 @@ export default function Home() {
           {showFilters && (
             <div className="mt-4 rounded-2xl border border-surface-container-high bg-surface-container-lowest p-4 flex flex-col gap-3 animate-slideDown">
               <label className="flex flex-col gap-1 text-[12px] text-on-surface-variant">
-                최소 AI 이동 점수: {filters.minScore}점 이상
+                최소 유모차 접근 점수: {filters.minScore}점 이상
                 <input
                   type="range"
                   min="1"

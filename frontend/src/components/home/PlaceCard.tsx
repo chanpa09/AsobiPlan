@@ -88,6 +88,12 @@ const renderReviewKeywords = (spot: Spot) => {
 const samePosition = (a: MarkerPosition | null, b: MarkerPosition) =>
   Boolean(a && Math.abs(a[0] - b[0]) < 0.000001 && Math.abs(a[1] - b[1]) < 0.000001);
 
+const confidenceLabel = {
+  official: "공식",
+  manual_checked: "수동 확인",
+  unknown: "확인 필요",
+} as const;
+
 export default function PlaceCard({ spot, active, routeStart, routeEnd, onSelect, onSetStart, onSetEnd }: PlaceCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const position: MarkerPosition = [spot.latitude, spot.longitude];
@@ -146,7 +152,7 @@ export default function PlaceCard({ spot, active, routeStart, routeEnd, onSelect
             <h3 className="font-label-lg text-[15px] font-bold text-on-surface leading-tight line-clamp-2">{spot.name}</h3>
           </div>
           <div className="shrink-0 text-right">
-            <span className="block text-[11px] text-on-surface-variant">{spot.source === "care" ? "돌봄 정보" : "AI 이동"}</span>
+            <span className="block text-[11px] text-on-surface-variant">{spot.source === "care" ? "돌봄 정보" : "유모차 접근"}</span>
             {spot.source === "care" ? (
               <span className="block max-w-[76px] text-[12px] font-bold leading-snug text-primary">{primarySummary}</span>
             ) : (
@@ -184,6 +190,30 @@ export default function PlaceCard({ spot, active, routeStart, routeEnd, onSelect
               {spot.access_note && spot.source === "place" && (
                 <p className="mt-2 text-[11px] text-on-surface-variant border-t border-outline-variant/10 pt-2">{spot.access_note}</p>
               )}
+              {(spot.source_name || spot.last_verified_at || spot.confidence || spot.source_url) && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-outline-variant/10 pt-2 text-[11px] text-on-surface-variant">
+                  {spot.source_name && (
+                    <span>
+                      출처:{" "}
+                      {spot.source_url ? (
+                        <a
+                          href={spot.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-primary hover:underline"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {spot.source_name}
+                        </a>
+                      ) : (
+                        <span className="font-semibold">{spot.source_name}</span>
+                      )}
+                    </span>
+                  )}
+                  {spot.last_verified_at && <span>검증일: {spot.last_verified_at}</span>}
+                  {spot.confidence && <span>신뢰도: {confidenceLabel[spot.confidence]}</span>}
+                </div>
+              )}
             </div>
             {renderReviewKeywords(spot)}
             
@@ -220,4 +250,3 @@ export default function PlaceCard({ spot, active, routeStart, routeEnd, onSelect
     </article>
   );
 }
-

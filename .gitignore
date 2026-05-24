@@ -73,3 +73,4 @@ temp/
 
 # Generated intermediate data
 frontend/public/data/*.pending-geocode.json
+frontend/public/data/.spot-tiles.check/

@@ -12,6 +12,7 @@ import {
   getSpotPrimarySummary,
   getVisibleAmenityTags,
   getReviewKeywordTone,
+  type MapBounds,
   type MarkerPosition,
   type Spot,
 } from "@/lib/spots";
@@ -26,6 +27,7 @@ interface MapProps {
   routeStart: MarkerPosition | null;
   routeEnd: MarkerPosition | null;
   onCenterChange: (center: MarkerPosition) => void;
+  onBoundsChange: (bounds: MapBounds) => void;
   onSpotSelect: (id: string | null) => void;
   onRouteStartChange: (position: MarkerPosition | null) => void;
   onRouteEndChange: (position: MarkerPosition | null) => void;
@@ -84,18 +86,30 @@ function MapController({ center }: { center: MarkerPosition }) {
   return null;
 }
 
+const toMapBounds = (bounds: L.LatLngBounds): MapBounds => ({
+  south: bounds.getSouth(),
+  west: bounds.getWest(),
+  north: bounds.getNorth(),
+  east: bounds.getEast(),
+});
+
 function MapEvents({
   center,
   onCenterChange,
+  onBoundsChange,
   onRouteEndChange,
 }: {
   center: MarkerPosition;
   onCenterChange: (center: MarkerPosition) => void;
+  onBoundsChange: (bounds: MapBounds) => void;
   onRouteEndChange: (position: MarkerPosition) => void;
 }) {
   const map = useMapEvents({
     contextmenu(e) {
       onRouteEndChange([e.latlng.lat, e.latlng.lng]);
+    },
+    zoomend() {
+      onBoundsChange(toMapBounds(map.getBounds()));
     },
     moveend() {
       const nextCenter = map.getCenter();
@@ -104,8 +118,14 @@ function MapEvents({
       if (latDiff > 0.0001 || lngDiff > 0.0001) {
         onCenterChange([nextCenter.lat, nextCenter.lng]);
       }
+      onBoundsChange(toMapBounds(map.getBounds()));
     },
   });
+
+  useEffect(() => {
+    onBoundsChange(toMapBounds(map.getBounds()));
+  }, [map, onBoundsChange]);
+
   return null;
 }
 
@@ -145,6 +165,7 @@ export default function Map({
   routeStart,
   routeEnd,
   onCenterChange,
+  onBoundsChange,
   onSpotSelect,
   onRouteStartChange,
   onRouteEndChange,
@@ -196,7 +217,7 @@ export default function Map({
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         <MapController center={center} />
-        <MapEvents center={center} onCenterChange={onCenterChange} onRouteEndChange={onRouteEndChange} />
+        <MapEvents center={center} onCenterChange={onCenterChange} onBoundsChange={onBoundsChange} onRouteEndChange={onRouteEndChange} />
 
         {currentLocation && (
           <Marker position={currentLocation} icon={createMarkerIcon("current")}>
@@ -323,7 +344,7 @@ export default function Map({
                       {googleRating && <span>{googleRating}</span>}
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span>{spot.source === "care" ? "돌봄 정보" : `AI 이동 점수 ${spot.stroller_score}/5`}</span>
+                      <span>{spot.source === "care" ? "돌봄 정보" : `유모차 접근 점수 ${spot.stroller_score}/5`}</span>
                       <strong className={spot.source === "care" ? "text-primary" : mobilityToneClass[mobility.tone]}>
                         {primarySummary}
                       </strong>

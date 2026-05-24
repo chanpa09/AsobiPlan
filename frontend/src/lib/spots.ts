@@ -5,6 +5,13 @@ export type SpotSource = "care" | "place";
 export type SpotCategory = "public_facility" | "mall" | "station" | "restaurant" | "cafe" | "park";
 export type AccessPolicy = "public_free" | "customer_only" | "paid_entry" | "ask_staff" | "unknown";
 
+export type MapBounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
 export interface BabyStation {
   id: number;
   name: string;
@@ -117,6 +124,34 @@ export type Spot = {
   };
 };
 
+export type SpotTileFeature = {
+  type: "Feature";
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+  properties: Omit<Spot, "latitude" | "longitude">;
+};
+
+export type SpotTileManifest = {
+  tileZoom: number;
+  tiles: string[];
+  includedFeatures: number;
+  excludedFeatures: number;
+  sourceCounts: {
+    babyStations: number;
+    places: number;
+    total: number;
+  };
+  criteria: string;
+};
+
+export type TileCoordinate = {
+  id: string;
+  x: number;
+  y: number;
+};
+
 export type SpotFilters = {
   minScore: number;
   category: SpotCategory | "";
@@ -220,6 +255,15 @@ export const featureToRecord = <T extends { latitude: number; longitude: number 
     latitude,
     longitude,
   } as T;
+};
+
+export const spotTileFeatureToSpot = (feature: SpotTileFeature): Spot => {
+  const [longitude, latitude] = feature.geometry.coordinates;
+  return {
+    ...feature.properties,
+    latitude,
+    longitude,
+  };
 };
 
 export const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -358,20 +402,62 @@ export const filterSpots = (
   });
 };
 
-export const loadStaticSpots = async (): Promise<Spot[]> => {
-  const [stationsRes, placesRes] = await Promise.all([
-    fetch(toDataUrl("/data/baby-stations.json")),
-    fetch(toDataUrl("/data/places.json")),
-  ]);
-  if (!stationsRes.ok || !placesRes.ok) {
-    throw new Error("Static data unavailable");
+export const lonToTileX = (longitude: number, zoom: number) => Math.floor(((longitude + 180) / 360) * 2 ** zoom);
+
+export const latToTileY = (latitude: number, zoom: number) => {
+  const latRad = (latitude * Math.PI) / 180;
+  return Math.floor(((1 - Math.asinh(Math.tan(latRad)) / Math.PI) / 2) * 2 ** zoom);
+};
+
+export const getTileIdsForBounds = (bounds: MapBounds, zoom: number, padding = 1) => {
+  const minX = lonToTileX(bounds.west, zoom) - padding;
+  const maxX = lonToTileX(bounds.east, zoom) + padding;
+  const minY = latToTileY(bounds.north, zoom) - padding;
+  const maxY = latToTileY(bounds.south, zoom) + padding;
+  const tileIds: string[] = [];
+
+  for (let x = minX; x <= maxX; x += 1) {
+    for (let y = minY; y <= maxY; y += 1) {
+      tileIds.push(`${x}-${y}`);
+    }
   }
 
-  const stationsData = (await stationsRes.json()) as FeatureCollection<BabyStation>;
-  const placesData = (await placesRes.json()) as FeatureCollection<Place>;
+  return tileIds;
+};
 
-  return [
-    ...stationsData.features.map(featureToRecord).map(toCareSpot),
-    ...placesData.features.map(featureToRecord).map(toPlaceSpot),
-  ];
+export const tileIdsToCoordinates = (tileIds: string[]): TileCoordinate[] =>
+  tileIds.flatMap((id) => {
+    const [xText, yText] = id.split("-");
+    const x = Number(xText);
+    const y = Number(yText);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return [];
+    return [{ id, x, y }];
+  });
+
+export const getAvailableTileIdsForBounds = (bounds: MapBounds, tileCoordinates: TileCoordinate[], zoom: number, padding = 1) => {
+  const minX = lonToTileX(bounds.west, zoom) - padding;
+  const maxX = lonToTileX(bounds.east, zoom) + padding;
+  const minY = latToTileY(bounds.north, zoom) - padding;
+  const maxY = latToTileY(bounds.south, zoom) + padding;
+
+  return tileCoordinates
+    .filter((tile) => tile.x >= minX && tile.x <= maxX && tile.y >= minY && tile.y <= maxY)
+    .map((tile) => tile.id);
+};
+
+export const loadSpotTileManifest = async (): Promise<SpotTileManifest> => {
+  const response = await fetch(toDataUrl("/data/spot-tiles/manifest.json"));
+  if (!response.ok) {
+    throw new Error("Spot tile manifest unavailable");
+  }
+  return (await response.json()) as SpotTileManifest;
+};
+
+export const loadSpotTile = async (tileId: string, zoom: number): Promise<Spot[]> => {
+  const response = await fetch(toDataUrl(`/data/spot-tiles/${zoom}/${tileId}.json`));
+  if (!response.ok) {
+    throw new Error(`Spot tile unavailable: ${tileId}`);
+  }
+  const data = (await response.json()) as FeatureCollection<Spot>;
+  return (data.features as unknown as SpotTileFeature[]).map(spotTileFeatureToSpot);
 };
